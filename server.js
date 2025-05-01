@@ -10,6 +10,7 @@ const PORT = process.env.PORT || 5000;
 const allowedOrigins = [
   "https://www.komnottra.com",
   "https://komnottra.com",
+  "http://localhost:3000"
 ];
 
 app.use(cors({
@@ -22,104 +23,95 @@ app.use(cors({
   }
 }));
 
-// === JSON Parsing Limit (increased for image size) ===
 app.use(express.json({ limit: "5mb" }));
 
-// === Data Files ===
-const dataDir = path.join(__dirname, "data");
+// === Use __dirname to locate data folder relative to app location ===
+const dataDir = path.resolve(__dirname, "data");
 const articlesFile = path.join(dataDir, "articles.json");
 const categoriesFile = path.join(dataDir, "categories.json");
 
-// === Ensure Data Directory and Files Exist ===
+// === Ensure folder and files exist ===
 if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir);
-
 if (!fs.existsSync(articlesFile)) fs.writeFileSync(articlesFile, JSON.stringify([]));
 if (!fs.existsSync(categoriesFile)) fs.writeFileSync(categoriesFile, JSON.stringify([]));
 
-const readJSON = (file) => JSON.parse(fs.readFileSync(file));
-const writeJSON = (file, data) => fs.writeFileSync(file, JSON.stringify(data, null, 2));
+// === Read/Write Utilities ===
+const readJSON = (file) => {
+  try {
+    const data = fs.readFileSync(file);
+    return JSON.parse(data);
+  } catch (err) {
+    console.error("Failed to read file:", file, err);
+    return [];
+  }
+};
+
+const writeJSON = (file, data) => {
+  try {
+    fs.writeFileSync(file, JSON.stringify(data, null, 2));
+    console.log("Successfully wrote to", file);
+  } catch (err) {
+    console.error("Failed to write file:", file, err);
+  }
+};
 
 // === Routes ===
 
 // --- Articles ---
 app.get("/articles", (req, res) => {
-  try {
-    const articles = readJSON(articlesFile);
-    res.json(articles);
-  } catch (err) {
-    res.status(500).json({ message: "Failed to read articles", error: err.message });
-  }
+  const articles = readJSON(articlesFile);
+  res.json(articles);
 });
 
 app.post("/articles", (req, res) => {
-  try {
-    const articles = readJSON(articlesFile);
-    const newArticle = { ...req.body, id: Date.now() };
-    articles.unshift(newArticle);
-    writeJSON(articlesFile, articles);
-    res.status(201).json({ message: "Article added", article: newArticle });
-  } catch (err) {
-    res.status(500).json({ message: "Failed to save article", error: err.message });
-  }
+  const articles = readJSON(articlesFile);
+  const newArticle = { ...req.body, id: Date.now() };
+  articles.unshift(newArticle);
+  writeJSON(articlesFile, articles);
+  res.status(201).json({ message: "Article added", article: newArticle });
 });
 
 app.delete("/articles/:id", (req, res) => {
-  try {
-    const articles = readJSON(articlesFile);
-    const id = parseInt(req.params.id);
-    const filtered = articles.filter(article => article.id !== id);
-    if (filtered.length === articles.length) {
-      return res.status(404).json({ message: "Article not found" });
-    }
-    writeJSON(articlesFile, filtered);
-    res.json({ message: "Article deleted" });
-  } catch (err) {
-    res.status(500).json({ message: "Failed to delete article", error: err.message });
+  const articles = readJSON(articlesFile);
+  const id = parseInt(req.params.id);
+  const filtered = articles.filter(article => article.id !== id);
+  if (filtered.length === articles.length) {
+    return res.status(404).json({ message: "Article not found" });
   }
+  writeJSON(articlesFile, filtered);
+  res.json({ message: "Article deleted" });
 });
 
 // --- Categories ---
 app.get("/categories", (req, res) => {
-  try {
-    const categories = readJSON(categoriesFile);
-    res.json(categories);
-  } catch (err) {
-    res.status(500).json({ message: "Failed to read categories", error: err.message });
-  }
+  const categories = readJSON(categoriesFile);
+  res.json(categories);
 });
 
 app.post("/categories", (req, res) => {
-  try {
-    const { category } = req.body;
-    if (!category) return res.status(400).json({ message: "Category is required" });
+  const { category } = req.body;
+  if (!category) return res.status(400).json({ message: "Category is required" });
 
-    const categories = readJSON(categoriesFile);
-    if (categories.includes(category)) return res.status(409).json({ message: "Category already exists" });
+  const categories = readJSON(categoriesFile);
+  if (categories.includes(category)) return res.status(409).json({ message: "Category already exists" });
 
-    categories.push(category);
-    writeJSON(categoriesFile, categories);
-    res.status(201).json({ message: "Category added", category });
-  } catch (err) {
-    res.status(500).json({ message: "Failed to save category", error: err.message });
-  }
+  categories.push(category);
+  writeJSON(categoriesFile, categories);
+  res.status(201).json({ message: "Category added", category });
 });
 
 app.delete("/categories/:category", (req, res) => {
-  try {
-    const category = req.params.category;
-    const categories = readJSON(categoriesFile);
-    const filtered = categories.filter(c => c !== category);
-    if (filtered.length === categories.length) {
-      return res.status(404).json({ message: "Category not found" });
-    }
-    writeJSON(categoriesFile, filtered);
-    res.json({ message: "Category deleted" });
-  } catch (err) {
-    res.status(500).json({ message: "Failed to delete category", error: err.message });
+  const category = req.params.category;
+  const categories = readJSON(categoriesFile);
+  const filtered = categories.filter(c => c !== category);
+  if (filtered.length === categories.length) {
+    return res.status(404).json({ message: "Category not found" });
   }
+  writeJSON(categoriesFile, filtered);
+  res.json({ message: "Category deleted" });
 });
 
 // === Start Server ===
 app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+  console.log(`✅ Server running on port ${PORT}`);
 });
