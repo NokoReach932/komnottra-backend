@@ -7,8 +7,19 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 
 // === CORS Setup ===
+const allowedOrigins = [
+  "https://www.komnottra.com",
+  "https://komnottra.com",
+];
+
 app.use(cors({
-  origin: "https://www.komnottra.com"
+  origin: function (origin, callback) {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error("Not allowed by CORS"));
+    }
+  }
 }));
 
 // === JSON Parsing Limit (increased for image size) ===
