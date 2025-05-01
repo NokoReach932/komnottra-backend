@@ -6,35 +6,44 @@ const cors = require("cors");
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-const dataFilePath = path.join(__dirname, "data", "articles.json");
+// Paths
+const articlesFilePath = path.join(__dirname, "data", "articles.json");
+const categoriesFilePath = path.join(__dirname, "data", "categories.json");
 
+// Allow only your frontend domain
 const corsOptions = {
   origin: function (origin, callback) {
-    // Allow requests from the specific frontend URL
     if (!origin || origin === "https://www.komnottra.com") {
-      callback(null, true); // Allow the request
+      callback(null, true);
     } else {
-      callback(new Error('Not allowed by CORS'), false); // Deny the request
+      callback(new Error("Not allowed by CORS"));
     }
   },
-  methods: ['GET', 'POST', 'DELETE'], // Allow specific methods
-  allowedHeaders: ['Content-Type'],  // Allow specific headers
+  methods: ['GET', 'POST', 'DELETE'],
+  allowedHeaders: ['Content-Type'],
 };
 
 app.use(cors(corsOptions));
 app.use(express.json({ limit: '5mb' }));
 
-// Ensure data file exists
-if (!fs.existsSync(dataFilePath)) {
-  fs.mkdirSync(path.dirname(dataFilePath), { recursive: true });
-  fs.writeFileSync(dataFilePath, JSON.stringify([]));
+// Ensure files exist
+if (!fs.existsSync(articlesFilePath)) {
+  fs.mkdirSync(path.dirname(articlesFilePath), { recursive: true });
+  fs.writeFileSync(articlesFilePath, JSON.stringify([]));
+}
+if (!fs.existsSync(categoriesFilePath)) {
+  fs.writeFileSync(categoriesFilePath, JSON.stringify([]));
 }
 
-// Helper to read/write data
-const readArticles = () => JSON.parse(fs.readFileSync(dataFilePath));
-const writeArticles = (articles) => fs.writeFileSync(dataFilePath, JSON.stringify(articles, null, 2));
+// === Article Helpers ===
+const readArticles = () => JSON.parse(fs.readFileSync(articlesFilePath));
+const writeArticles = (data) => fs.writeFileSync(articlesFilePath, JSON.stringify(data, null, 2));
 
-// Routes
+// === Category Helpers ===
+const readCategories = () => JSON.parse(fs.readFileSync(categoriesFilePath));
+const writeCategories = (data) => fs.writeFileSync(categoriesFilePath, JSON.stringify(data, null, 2));
+
+// === Article Routes ===
 app.get("/articles", (req, res) => {
   res.json(readArticles());
 });
@@ -59,6 +68,36 @@ app.delete("/articles/:id", (req, res) => {
   res.json({ message: "Article deleted" });
 });
 
+// === Category Routes ===
+app.get("/categories", (req, res) => {
+  res.json(readCategories());
+});
+
+app.post("/categories", (req, res) => {
+  const { category } = req.body;
+  if (!category) return res.status(400).json({ message: "Category is required" });
+
+  const categories = readCategories();
+  if (categories.includes(category)) {
+    return res.status(400).json({ message: "Category already exists" });
+  }
+  categories.push(category);
+  writeCategories(categories);
+  res.status(201).json({ message: "Category added", category });
+});
+
+app.delete("/categories/:name", (req, res) => {
+  const name = req.params.name;
+  const categories = readCategories();
+  const filtered = categories.filter(c => c !== name);
+  if (filtered.length === categories.length) {
+    return res.status(404).json({ message: "Category not found" });
+  }
+  writeCategories(filtered);
+  res.json({ message: "Category deleted" });
+});
+
+// === Start Server ===
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
