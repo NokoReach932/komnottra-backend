@@ -8,9 +8,20 @@ const PORT = process.env.PORT || 5000;
 
 const dataFilePath = path.join(__dirname, "data", "articles.json");
 
-app.use(cors({
-  origin: "https://www.komnottra.com"
-}));
+const corsOptions = {
+  origin: function (origin, callback) {
+    // Allow requests from the specific frontend URL
+    if (!origin || origin === "https://www.komnottra.com") {
+      callback(null, true); // Allow the request
+    } else {
+      callback(new Error('Not allowed by CORS'), false); // Deny the request
+    }
+  },
+  methods: ['GET', 'POST', 'DELETE'], // Allow specific methods
+  allowedHeaders: ['Content-Type'],  // Allow specific headers
+};
+
+app.use(cors(corsOptions));
 app.use(express.json({ limit: '5mb' }));
 
 // Ensure data file exists
