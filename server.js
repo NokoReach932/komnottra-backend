@@ -90,10 +90,14 @@ app.get("/categories", (req, res) => {
 
 app.post("/categories", (req, res) => {
   const { category } = req.body;
-  if (!category) return res.status(400).json({ message: "Category is required" });
+  if (!category || typeof category !== "string" || category.trim() === "") {
+    return res.status(400).json({ message: "Invalid category" });
+  }
 
   const categories = readJSON(categoriesFile);
-  if (categories.includes(category)) return res.status(409).json({ message: "Category already exists" });
+  if (categories.includes(category)) {
+    return res.status(409).json({ message: "Category already exists" });
+  }
 
   categories.push(category);
   writeJSON(categoriesFile, categories);
@@ -101,17 +105,19 @@ app.post("/categories", (req, res) => {
 });
 
 app.delete("/categories/:category", (req, res) => {
-  const category = req.params.category;
+  const categoryToDelete = decodeURIComponent(req.params.category);
   const categories = readJSON(categoriesFile);
-  const filtered = categories.filter(c => c !== category);
-  if (filtered.length === categories.length) {
+
+  if (!categories.includes(categoryToDelete)) {
     return res.status(404).json({ message: "Category not found" });
   }
-  writeJSON(categoriesFile, filtered);
+
+  const updated = categories.filter(cat => cat !== categoryToDelete);
+  writeJSON(categoriesFile, updated);
   res.json({ message: "Category deleted" });
 });
 
 // === Start Server ===
 app.listen(PORT, () => {
-  console.log(`✅ Server running on port ${PORT}`);
+  console.log(`Server running on port ${PORT}`);
 });
