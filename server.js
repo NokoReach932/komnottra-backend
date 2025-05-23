@@ -58,11 +58,24 @@ const writeJSON = (file, data) => {
 // === Routes ===
 
 // --- Articles ---
+// Get all articles
 app.get("/articles", (req, res) => {
   const articles = readJSON(articlesFile);
   res.json(articles);
 });
 
+// Get a single article by ID
+app.get("/articles/:id", (req, res) => {
+  const articles = readJSON(articlesFile);
+  const id = parseInt(req.params.id);
+  const article = articles.find(a => a.id === id);
+  if (!article) {
+    return res.status(404).json({ message: "Article not found" });
+  }
+  res.json(article);
+});
+
+// Add a new article
 app.post("/articles", (req, res) => {
   const articles = readJSON(articlesFile);
   const newArticle = { ...req.body, id: Date.now() };
@@ -71,6 +84,7 @@ app.post("/articles", (req, res) => {
   res.status(201).json({ message: "Article added", article: newArticle });
 });
 
+// Delete an article by ID
 app.delete("/articles/:id", (req, res) => {
   const articles = readJSON(articlesFile);
   const id = parseInt(req.params.id);
@@ -83,11 +97,13 @@ app.delete("/articles/:id", (req, res) => {
 });
 
 // --- Categories ---
+// Get all categories
 app.get("/categories", (req, res) => {
   const categories = readJSON(categoriesFile);
   res.json(categories);
 });
 
+// Add a new category
 app.post("/categories", (req, res) => {
   const { category } = req.body;
   if (!category || typeof category !== "string" || category.trim() === "") {
@@ -104,6 +120,7 @@ app.post("/categories", (req, res) => {
   res.status(201).json({ message: "Category added", category });
 });
 
+// Delete a category by name
 app.delete("/categories/:category", (req, res) => {
   const categoryToDelete = decodeURIComponent(req.params.category);
   const categories = readJSON(categoriesFile);
