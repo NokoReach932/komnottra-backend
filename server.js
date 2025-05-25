@@ -98,24 +98,10 @@ app.delete("/articles/:id", (req, res) => {
 
 // --- Categories ---
 // Get all categories
-app.get("/articles", (req, res) => {
-  let articles = readJSON(articlesFile);
-  const { category, excludeId } = req.query;
-
-  if (category) {
-    articles = articles.filter(article => article.category === category);
-  }
-
-  if (excludeId) {
-    const excludeIdNum = parseInt(excludeId);
-    if (!isNaN(excludeIdNum)) {
-      articles = articles.filter(article => article.id !== excludeIdNum);
-    }
-  }
-
-  res.json(articles);
+app.get("/categories", (req, res) => {
+  const categories = readJSON(categoriesFile);
+  res.json(categories);
 });
-
 
 // Add a new category
 app.post("/categories", (req, res) => {
