@@ -64,8 +64,12 @@ app.get("/articles", (req, res) => {
   const { category, excludeId } = req.query;
 
   if (category) {
-    articles = articles.filter(article => article.category === category);
-  }
+  const wanted = category.toLowerCase().trim();
+  articles = articles.filter(
+    a => (a.category || "").toLowerCase().trim() === wanted
+  );
+}
+
 
   if (excludeId) {
     const excludeIdNum = parseInt(excludeId);
