@@ -60,9 +60,23 @@ const writeJSON = (file, data) => {
 // --- Articles ---
 // Get all articles
 app.get("/articles", (req, res) => {
-  const articles = readJSON(articlesFile);
+  let articles = readJSON(articlesFile);
+  const { category, excludeId } = req.query;
+
+  if (category) {
+    articles = articles.filter(article => article.category === category);
+  }
+
+  if (excludeId) {
+    const excludeIdNum = parseInt(excludeId);
+    if (!isNaN(excludeIdNum)) {
+      articles = articles.filter(article => article.id !== excludeIdNum);
+    }
+  }
+
   res.json(articles);
 });
+
 
 // Get a single article by ID
 app.get("/articles/:id", (req, res) => {
