@@ -170,6 +170,28 @@ app.delete("/categories/:category", (req, res) => {
   res.json({ message: "Category deleted" });
 });
 
+//backup and restore
+
+app.get("/admin/backup/download", (req, res) => {
+  const articles = readJSON(articlesFile);
+  const categories = readJSON(categoriesFile);
+  res.json({ articles, categories });
+});
+
+app.post("/admin/backup/restore", (req, res) => {
+  const { articles, categories } = req.body;
+
+  if (!Array.isArray(articles) || !Array.isArray(categories)) {
+    return res.status(400).json({ message: "Invalid backup data" });
+  }
+
+  writeJSON(articlesFile, articles);
+  writeJSON(categoriesFile, categories);
+
+  res.json({ message: "Backup restored successfully" });
+});
+
+
 // === Start Server ===
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
