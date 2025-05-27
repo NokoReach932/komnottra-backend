@@ -59,6 +59,22 @@ const writeJSON = (file, data) => {
 
 // --- Articles ---
 // Get all articles
+
+// In server.js, add this route:
+
+app.get("/articles/slug/:slug", (req, res) => {
+  const articles = readJSON(articlesFile);
+  const slug = req.params.slug.toLowerCase();
+
+  // Assuming you store slug in article.slug
+  const article = articles.find(a => a.slug && a.slug.toLowerCase() === slug);
+
+  if (!article) {
+    return res.status(404).json({ message: "Article not found" });
+  }
+  res.json(article);
+});
+
 app.get("/articles", (req, res) => {
   let articles = readJSON(articlesFile);
   const { category, excludeId } = req.query;
@@ -77,27 +93,8 @@ app.get("/articles", (req, res) => {
   res.json(articles);
 });
 
-// Get a single article by ID
-app.get("/articles/:id", (req, res) => {
-  const articles = readJSON(articlesFile);
-  const id = parseInt(req.params.id);
-  const article = articles.find(a => a.id === id);
-  if (!article) {
-    return res.status(404).json({ message: "Article not found" });
-  }
-  res.json(article);
-});
 
-// Get article by slug
-app.get("/articles/slug/:slug", (req, res) => {
-  const articles = readJSON(articlesFile);
-  const slug = req.params.slug;
-  const article = articles.find(a => a.slug === slug);
-  if (!article) {
-    return res.status(404).json({ message: "Article not found" });
-  }
-  res.json(article);
-});
+
 
 // Add a new article
 function slugify(text) {
