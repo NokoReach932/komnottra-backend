@@ -55,18 +55,22 @@ const writeJSON = (file, data) => {
   }
 };
 
+// === Utility: Slugify ===
+const slugify = (text) => 
+  text.toString().toLowerCase()
+    .replace(/\s+/g, '-')           // Replace spaces with -
+    .replace(/[^\w\-]+/g, '')       // Remove all non-word chars
+    .replace(/\-\-+/g, '-')         // Replace multiple - with single -
+    .replace(/^-+/, '')             // Trim - from start
+    .replace(/-+$/, '');            // Trim - from end
+
 // === Routes ===
 
 // --- Articles ---
-// Get all articles
-
-// In server.js, add this route:
-
+// Get article by slug
 app.get("/articles/slug/:slug", (req, res) => {
   const articles = readJSON(articlesFile);
   const slug = req.params.slug.toLowerCase();
-
-  // Assuming you store slug in article.slug
   const article = articles.find(a => a.slug && a.slug.toLowerCase() === slug);
 
   if (!article) {
@@ -75,12 +79,14 @@ app.get("/articles/slug/:slug", (req, res) => {
   res.json(article);
 });
 
+// Get all articles (with optional filters)
 app.get("/articles", (req, res) => {
   let articles = readJSON(articlesFile);
   const { category, excludeId } = req.query;
 
   if (category) {
-    articles = articles.filter(article => article.category === category);
+    const categoryLower = category.toLowerCase();
+    articles = articles.filter(article => article.category?.toLowerCase() === categoryLower);
   }
 
   if (excludeId) {
@@ -93,60 +99,34 @@ app.get("/articles", (req, res) => {
   res.json(articles);
 });
 
-
-
-
 // Add a new article
-function slugify(text) {
-  return text
-    .toString()
-    .toLowerCase()
-    .trim()
-    .replace(/[^\w\s-]/g, "")   // Remove special chars
-    .replace(/\s+/g, "-");      // Replace spaces with hyphens
-}
-
 app.post("/articles", (req, res) => {
-  const articles = readJSON(articlesFile);
-  const { title } = req.body;
+  try {
+    const articles = readJSON(articlesFile);
+    const { title } = req.body;
 
-  if (!title) {
-    return res.status(400).json({ message: "Title is required" });
+    if (!title || typeof title !== "string") {
+      return res.status(400).json({ message: "Title is required and must be a string" });
+    }
+
+    const baseSlug = slugify(title);
+    let slug = baseSlug;
+    let suffix = 1;
+
+    // Ensure unique slug
+    while (articles.some(a => a.slug === slug)) {
+      slug = `${baseSlug}-${suffix++}`;
+    }
+
+    const newArticle = { ...req.body, id: Date.now(), slug };
+    articles.unshift(newArticle);
+    writeJSON(articlesFile, articles);
+    res.status(201).json({ message: "Article added", article: newArticle });
+  } catch (err) {
+    console.error("Error adding article:", err);
+    res.status(500).json({ message: "Internal server error" });
   }
-
-  let baseSlug = slugify(title);
-  let slug = baseSlug;
-  let suffix = 1;
-  while (articles.some(a => a.slug === slug)) {
-    slug = `${baseSlug}-${suffix++}`;
-  }
-
-  const newArticle = { ...req.body, id: Date.now(), slug };
-  articles.unshift(newArticle);
-  writeJSON(articlesFile, articles);
-  res.status(201).json({ message: "Article added", article: newArticle });
 });
-
-const slugify = (text) => 
-  text.toString().toLowerCase()
-    .replace(/\s+/g, '-')           // Replace spaces with -
-    .replace(/[^\w\-]+/g, '')       // Remove all non-word chars
-    .replace(/\-\-+/g, '-')         // Replace multiple - with single -
-    .replace(/^-+/, '')             // Trim - from start
-    .replace(/-+$/, '');            // Trim - from end
-
-app.post("/articles", (req, res) => {
-  const articles = readJSON(articlesFile);
-  const newArticle = { ...req.body, id: Date.now() };
-
-  // Generate slug from title
-  newArticle.slug = slugify(newArticle.title);
-
-  articles.unshift(newArticle);
-  writeJSON(articlesFile, articles);
-  res.status(201).json({ message: "Article added", article: newArticle });
-});
-
 
 // Delete an article by ID
 app.delete("/articles/:id", (req, res) => {
