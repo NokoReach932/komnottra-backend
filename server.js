@@ -55,18 +55,23 @@ const writeJSON = (file, data) => {
   }
 };
 
+// === Slugify helper ===
+function slugify(text) {
+  return text
+    .toString()
+    .toLowerCase()
+    .trim()
+    .replace(/[^\w\s-]/g, "")   // Remove special chars
+    .replace(/\s+/g, "-");      // Replace spaces with hyphens
+}
+
 // === Routes ===
 
-// --- Articles ---
-// Get all articles
-
-// In server.js, add this route:
-
+// Get a single article by slug
 app.get("/articles/slug/:slug", (req, res) => {
   const articles = readJSON(articlesFile);
   const slug = req.params.slug.toLowerCase();
 
-  // Assuming you store slug in article.slug
   const article = articles.find(a => a.slug && a.slug.toLowerCase() === slug);
 
   if (!article) {
@@ -75,6 +80,7 @@ app.get("/articles/slug/:slug", (req, res) => {
   res.json(article);
 });
 
+// Get all articles, optionally filtered by category or excluding an ID
 app.get("/articles", (req, res) => {
   let articles = readJSON(articlesFile);
   const { category, excludeId } = req.query;
@@ -93,19 +99,7 @@ app.get("/articles", (req, res) => {
   res.json(articles);
 });
 
-
-
-
-// Add a new article
-function slugify(text) {
-  return text
-    .toString()
-    .toLowerCase()
-    .trim()
-    .replace(/[^\w\s-]/g, "")   // Remove special chars
-    .replace(/\s+/g, "-");      // Replace spaces with hyphens
-}
-
+// Add a new article with unique slug
 app.post("/articles", (req, res) => {
   const articles = readJSON(articlesFile);
   const { title } = req.body;
@@ -127,27 +121,6 @@ app.post("/articles", (req, res) => {
   res.status(201).json({ message: "Article added", article: newArticle });
 });
 
-const slugify = (text) => 
-  text.toString().toLowerCase()
-    .replace(/\s+/g, '-')           // Replace spaces with -
-    .replace(/[^\w\-]+/g, '')       // Remove all non-word chars
-    .replace(/\-\-+/g, '-')         // Replace multiple - with single -
-    .replace(/^-+/, '')             // Trim - from start
-    .replace(/-+$/, '');            // Trim - from end
-
-app.post("/articles", (req, res) => {
-  const articles = readJSON(articlesFile);
-  const newArticle = { ...req.body, id: Date.now() };
-
-  // Generate slug from title
-  newArticle.slug = slugify(newArticle.title);
-
-  articles.unshift(newArticle);
-  writeJSON(articlesFile, articles);
-  res.status(201).json({ message: "Article added", article: newArticle });
-});
-
-
 // Delete an article by ID
 app.delete("/articles/:id", (req, res) => {
   const articles = readJSON(articlesFile);
@@ -160,7 +133,6 @@ app.delete("/articles/:id", (req, res) => {
   res.json({ message: "Article deleted" });
 });
 
-// --- Categories ---
 // Get all categories
 app.get("/categories", (req, res) => {
   const categories = readJSON(categoriesFile);
