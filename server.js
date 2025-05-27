@@ -130,6 +130,26 @@ app.post("/articles", (req, res) => {
   res.status(201).json({ message: "Article added", article: newArticle });
 });
 
+const slugify = (text) => 
+  text.toString().toLowerCase()
+    .replace(/\s+/g, '-')           // Replace spaces with -
+    .replace(/[^\w\-]+/g, '')       // Remove all non-word chars
+    .replace(/\-\-+/g, '-')         // Replace multiple - with single -
+    .replace(/^-+/, '')             // Trim - from start
+    .replace(/-+$/, '');            // Trim - from end
+
+app.post("/articles", (req, res) => {
+  const articles = readJSON(articlesFile);
+  const newArticle = { ...req.body, id: Date.now() };
+
+  // Generate slug from title
+  newArticle.slug = slugify(newArticle.title);
+
+  articles.unshift(newArticle);
+  writeJSON(articlesFile, articles);
+  res.status(201).json({ message: "Article added", article: newArticle });
+});
+
 
 // Delete an article by ID
 app.delete("/articles/:id", (req, res) => {
