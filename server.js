@@ -88,14 +88,48 @@ app.get("/articles/:id", (req, res) => {
   res.json(article);
 });
 
+// Get article by slug
+app.get("/articles/slug/:slug", (req, res) => {
+  const articles = readJSON(articlesFile);
+  const slug = req.params.slug;
+  const article = articles.find(a => a.slug === slug);
+  if (!article) {
+    return res.status(404).json({ message: "Article not found" });
+  }
+  res.json(article);
+});
+
 // Add a new article
+function slugify(text) {
+  return text
+    .toString()
+    .toLowerCase()
+    .trim()
+    .replace(/[^\w\s-]/g, "")   // Remove special chars
+    .replace(/\s+/g, "-");      // Replace spaces with hyphens
+}
+
 app.post("/articles", (req, res) => {
   const articles = readJSON(articlesFile);
-  const newArticle = { ...req.body, id: Date.now() };
+  const { title } = req.body;
+
+  if (!title) {
+    return res.status(400).json({ message: "Title is required" });
+  }
+
+  let baseSlug = slugify(title);
+  let slug = baseSlug;
+  let suffix = 1;
+  while (articles.some(a => a.slug === slug)) {
+    slug = `${baseSlug}-${suffix++}`;
+  }
+
+  const newArticle = { ...req.body, id: Date.now(), slug };
   articles.unshift(newArticle);
   writeJSON(articlesFile, articles);
   res.status(201).json({ message: "Article added", article: newArticle });
 });
+
 
 // Delete an article by ID
 app.delete("/articles/:id", (req, res) => {
