@@ -35,10 +35,18 @@ const writeJSON = (file, data) => {
 };
 
 // === Articles Routes ===
-app.get("/articles", (req, res) => {
+app.get("/articles/slug/:slug", (req, res) => {
   const articles = readJSON(articlesFile);
-  res.json(articles);
+  const slug = req.params.slug.toLowerCase();
+  const article = articles.find(a => a.slug && a.slug.toLowerCase() === slug);
+
+  if (!article) {
+    return res.status(404).json({ message: "Article not found" });
+  }
+
+  res.json(article);
 });
+
 
 app.post("/articles", (req, res) => {
   const articles = readJSON(articlesFile);
