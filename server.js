@@ -7,24 +7,6 @@ const multer = require("multer");
 const unzipper = require("unzipper");
 
 const upload = multer({ storage: multer.memoryStorage() });
-const imageStorage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    const uploadPath = path.resolve(__dirname, "uploads");
-    if (!fs.existsSync(uploadPath)) {
-      fs.mkdirSync(uploadPath);
-    }
-    cb(null, uploadPath);
-  },
-  filename: function (req, file, cb) {
-    const ext = path.extname(file.originalname);
-    const baseName = path.basename(file.originalname, ext);
-    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1E9);
-    cb(null, baseName + "-" + uniqueSuffix + ext);
-  }
-});
-
-const uploadDisk = multer({ storage: imageStorage });
-
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -88,7 +70,6 @@ const slugify = (text) =>
     .replace(/-+$/, '');            
 
 // === Routes ===
-app.use("/uploads", express.static(path.resolve(__dirname, "uploads")));
 
 // --- Articles ---
 app.get("/articles/slug/:slug", (req, res) => {
@@ -115,50 +96,28 @@ app.get("/articles", (req, res) => {
   res.json(articles);
 });
 
-// Use multer middleware to handle single file upload named "image"
-app.post("/articles", uploadDisk.single("image"), (req, res) => {
+app.post("/articles", (req, res) => {
   try {
     const articles = readJSON(articlesFile);
-    const { title, category, description } = req.body;
-
+    const { title } = req.body;
     if (!title || typeof title !== "string") {
       return res.status(400).json({ message: "Title is required and must be a string" });
     }
-
-    // Slug generation logic same as before
     const baseSlug = slugify(title);
     let slug = baseSlug;
     let suffix = 1;
     while (articles.some(a => a.slug === slug)) {
       slug = `${baseSlug}-${suffix++}`;
     }
-
-    // Get the image URL/path if file uploaded
-    let imageUrl = null;
-    if (req.file) {
-      // Save relative path so frontend can access it
-      imageUrl = "/uploads/" + req.file.filename;
-    }
-
-    const newArticle = {
-      id: Date.now(),
-      title,
-      category,
-      description,
-      slug,
-      image: imageUrl
-    };
-
+    const newArticle = { ...req.body, id: Date.now(), slug };
     articles.unshift(newArticle);
     writeJSON(articlesFile, articles);
-
     res.status(201).json({ message: "Article added", article: newArticle });
   } catch (err) {
     console.error("Error adding article:", err);
     res.status(500).json({ message: "Internal server error" });
   }
 });
-
 
 app.delete("/articles/:id", (req, res) => {
   const articles = readJSON(articlesFile);
@@ -244,47 +203,6 @@ app.post("/admin/restore", upload.single("backup"), async (req, res) => {
     res.status(500).json({ message: "Internal server error" });
   }
 });
-
-//Facebook & Messenger
-app.get("/articles/:slug", (req, res, next) => {
-  const userAgent = req.headers["user-agent"] || "";
-  const isBot = /facebookexternalhit|twitterbot|linkedinbot|slackbot/i.test(userAgent);
-
-  if (!isBot) {
-    return next(); // Let React handle it
-  }
-
-  const slug = req.params.slug.toLowerCase();
-  const articles = readJSON(articlesFile);
-  const article = articles.find(a => a.slug.toLowerCase() === slug);
-
-  if (!article) {
-    return res.status(404).send("Article not found");
-  }
-
-  const html = `
-    <!DOCTYPE html>
-    <html lang="en">
-    <head>
-      <meta property="og:title" content="${article.title}" />
-      <meta property="og:description" content="${article.description || 'Read this article on Komnottra'}" />
-      <meta property="og:image" content="${article.image || 'https://www.komnottra.com/default-og-image.jpg'}" />
-      <meta property="og:url" content="https://www.komnottra.com/articles/${article.slug}" />
-      <meta property="og:type" content="article" />
-      <meta charset="utf-8" />
-      <title>${article.title}</title>
-    </head>
-    <body>
-      <p>Redirecting to article...</p>
-      <script>
-        window.location.href = "/articles/${article.slug}";
-      </script>
-    </body>
-    </html>
-  `;
-  res.send(html);
-});
-
 
 // === Start Server ===
 app.listen(PORT, () => {
