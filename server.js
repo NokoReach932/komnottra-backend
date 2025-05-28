@@ -162,29 +162,44 @@ app.delete("/categories/:category", (req, res) => {
 });
 
 // --- Admin Backup & Restore ---
+
+// Backup endpoint - archive articles.json and categories.json into backup.zip
 app.get("/admin/backup", (req, res) => {
   const archive = archiver("zip", { zlib: { level: 9 } });
   res.attachment("backup.zip");
+
+  archive.on("error", err => {
+    console.error("Archive error:", err);
+    res.status(500).send({ message: "Archive error" });
+  });
+
   archive.pipe(res);
+
   archive.file(articlesFile, { name: "articles.json" });
   archive.file(categoriesFile, { name: "categories.json" });
+
   archive.finalize();
 });
 
+// Restore endpoint - upload a zip containing articles.json and categories.json to restore data
 app.post("/admin/restore", upload.single("backup"), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ message: "No file uploaded" });
+
     const zip = await unzipper.Open.buffer(req.file.buffer);
     const articlesEntry = zip.files.find(f => f.path === "articles.json");
     const categoriesEntry = zip.files.find(f => f.path === "categories.json");
+
     if (!articlesEntry || !categoriesEntry) {
-      return res.status(400).json({ message: "Missing articles.json or categories.json" });
+      return res.status(400).json({ message: "Missing articles.json or categories.json in archive" });
     }
+
     fs.writeFileSync(articlesFile, await articlesEntry.buffer());
     fs.writeFileSync(categoriesFile, await categoriesEntry.buffer());
+
     res.json({ message: "Restore successful" });
   } catch (err) {
-    console.error(err);
+    console.error("Restore error:", err);
     res.status(500).json({ message: "Internal server error" });
   }
 });
