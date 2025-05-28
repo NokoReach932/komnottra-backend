@@ -7,6 +7,24 @@ const multer = require("multer");
 const unzipper = require("unzipper");
 
 const upload = multer({ storage: multer.memoryStorage() });
+const imageStorage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    const uploadPath = path.resolve(__dirname, "uploads");
+    if (!fs.existsSync(uploadPath)) {
+      fs.mkdirSync(uploadPath);
+    }
+    cb(null, uploadPath);
+  },
+  filename: function (req, file, cb) {
+    const ext = path.extname(file.originalname);
+    const baseName = path.basename(file.originalname, ext);
+    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1E9);
+    cb(null, baseName + "-" + uniqueSuffix + ext);
+  }
+});
+
+const uploadDisk = multer({ storage: imageStorage });
+
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -96,28 +114,50 @@ app.get("/articles", (req, res) => {
   res.json(articles);
 });
 
-app.post("/articles", (req, res) => {
+// Use multer middleware to handle single file upload named "image"
+app.post("/articles", uploadDisk.single("image"), (req, res) => {
   try {
     const articles = readJSON(articlesFile);
-    const { title } = req.body;
+    const { title, category, description } = req.body;
+
     if (!title || typeof title !== "string") {
       return res.status(400).json({ message: "Title is required and must be a string" });
     }
+
+    // Slug generation logic same as before
     const baseSlug = slugify(title);
     let slug = baseSlug;
     let suffix = 1;
     while (articles.some(a => a.slug === slug)) {
       slug = `${baseSlug}-${suffix++}`;
     }
-    const newArticle = { ...req.body, id: Date.now(), slug };
+
+    // Get the image URL/path if file uploaded
+    let imageUrl = null;
+    if (req.file) {
+      // Save relative path so frontend can access it
+      imageUrl = "/uploads/" + req.file.filename;
+    }
+
+    const newArticle = {
+      id: Date.now(),
+      title,
+      category,
+      description,
+      slug,
+      image: imageUrl
+    };
+
     articles.unshift(newArticle);
     writeJSON(articlesFile, articles);
+
     res.status(201).json({ message: "Article added", article: newArticle });
   } catch (err) {
     console.error("Error adding article:", err);
     res.status(500).json({ message: "Internal server error" });
   }
 });
+
 
 app.delete("/articles/:id", (req, res) => {
   const articles = readJSON(articlesFile);
