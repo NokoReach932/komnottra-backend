@@ -15,7 +15,7 @@ const PORT = process.env.PORT || 5000;
 const allowedOrigins = [
   "https://www.komnottra.com",
   "https://komnottra.com",
-  "http://localhost:10000"
+  "http://localhost:5000"
 ];
 
 app.use(cors({
