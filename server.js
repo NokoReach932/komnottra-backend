@@ -2,6 +2,11 @@ const express = require("express");
 const fs = require("fs");
 const path = require("path");
 const cors = require("cors");
+const archiver = require("archiver");
+const multer = require("multer");
+const unzipper = require("unzipper");
+
+const upload = multer({ storage: multer.memoryStorage() });
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -58,66 +63,52 @@ const writeJSON = (file, data) => {
 // === Utility: Slugify ===
 const slugify = (text) => 
   text.toString().toLowerCase()
-    .replace(/\s+/g, '-')           // Replace spaces with -
-    .replace(/[^\w\-]+/g, '')       // Remove all non-word chars
-    .replace(/\-\-+/g, '-')         // Replace multiple - with single -
-    .replace(/^-+/, '')             // Trim - from start
-    .replace(/-+$/, '');            // Trim - from end
+    .replace(/\s+/g, '-')           
+    .replace(/[^\w\-]+/g, '')       
+    .replace(/\-\-+/g, '-')         
+    .replace(/^-+/, '')             
+    .replace(/-+$/, '');            
 
 // === Routes ===
 
 // --- Articles ---
-// Get article by slug
 app.get("/articles/slug/:slug", (req, res) => {
   const articles = readJSON(articlesFile);
   const slug = req.params.slug.toLowerCase();
   const article = articles.find(a => a.slug && a.slug.toLowerCase() === slug);
-
-  if (!article) {
-    return res.status(404).json({ message: "Article not found" });
-  }
+  if (!article) return res.status(404).json({ message: "Article not found" });
   res.json(article);
 });
 
-// Get all articles (with optional filters)
 app.get("/articles", (req, res) => {
   let articles = readJSON(articlesFile);
   const { category, excludeId } = req.query;
-
   if (category) {
     const categoryLower = category.toLowerCase();
     articles = articles.filter(article => article.category?.toLowerCase() === categoryLower);
   }
-
   if (excludeId) {
     const excludeIdNum = parseInt(excludeId);
     if (!isNaN(excludeIdNum)) {
       articles = articles.filter(article => article.id !== excludeIdNum);
     }
   }
-
   res.json(articles);
 });
 
-// Add a new article
 app.post("/articles", (req, res) => {
   try {
     const articles = readJSON(articlesFile);
     const { title } = req.body;
-
     if (!title || typeof title !== "string") {
       return res.status(400).json({ message: "Title is required and must be a string" });
     }
-
     const baseSlug = slugify(title);
     let slug = baseSlug;
     let suffix = 1;
-
-    // Ensure unique slug
     while (articles.some(a => a.slug === slug)) {
       slug = `${baseSlug}-${suffix++}`;
     }
-
     const newArticle = { ...req.body, id: Date.now(), slug };
     articles.unshift(newArticle);
     writeJSON(articlesFile, articles);
@@ -128,7 +119,6 @@ app.post("/articles", (req, res) => {
   }
 });
 
-// Delete an article by ID
 app.delete("/articles/:id", (req, res) => {
   const articles = readJSON(articlesFile);
   const id = parseInt(req.params.id);
@@ -141,41 +131,62 @@ app.delete("/articles/:id", (req, res) => {
 });
 
 // --- Categories ---
-// Get all categories
 app.get("/categories", (req, res) => {
   const categories = readJSON(categoriesFile);
   res.json(categories);
 });
 
-// Add a new category
 app.post("/categories", (req, res) => {
   const { category } = req.body;
   if (!category || typeof category !== "string" || category.trim() === "") {
     return res.status(400).json({ message: "Invalid category" });
   }
-
   const categories = readJSON(categoriesFile);
   if (categories.includes(category)) {
     return res.status(409).json({ message: "Category already exists" });
   }
-
   categories.push(category);
   writeJSON(categoriesFile, categories);
   res.status(201).json({ message: "Category added", category });
 });
 
-// Delete a category by name
 app.delete("/categories/:category", (req, res) => {
   const categoryToDelete = decodeURIComponent(req.params.category);
   const categories = readJSON(categoriesFile);
-
   if (!categories.includes(categoryToDelete)) {
     return res.status(404).json({ message: "Category not found" });
   }
-
   const updated = categories.filter(cat => cat !== categoryToDelete);
   writeJSON(categoriesFile, updated);
   res.json({ message: "Category deleted" });
+});
+
+// --- Admin Backup & Restore ---
+app.get("/admin/backup", (req, res) => {
+  const archive = archiver("zip", { zlib: { level: 9 } });
+  res.attachment("backup.zip");
+  archive.pipe(res);
+  archive.file(articlesFile, { name: "articles.json" });
+  archive.file(categoriesFile, { name: "categories.json" });
+  archive.finalize();
+});
+
+app.post("/admin/restore", upload.single("backup"), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ message: "No file uploaded" });
+    const zip = await unzipper.Open.buffer(req.file.buffer);
+    const articlesEntry = zip.files.find(f => f.path === "articles.json");
+    const categoriesEntry = zip.files.find(f => f.path === "categories.json");
+    if (!articlesEntry || !categoriesEntry) {
+      return res.status(400).json({ message: "Missing articles.json or categories.json" });
+    }
+    fs.writeFileSync(articlesFile, await articlesEntry.buffer());
+    fs.writeFileSync(categoriesFile, await categoriesEntry.buffer());
+    res.json({ message: "Restore successful" });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Internal server error" });
+  }
 });
 
 // === Start Server ===
