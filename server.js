@@ -204,6 +204,47 @@ app.post("/admin/restore", upload.single("backup"), async (req, res) => {
   }
 });
 
+//Facebook & Messenger
+app.get("/articles/:slug", (req, res, next) => {
+  const userAgent = req.headers["user-agent"] || "";
+  const isBot = /facebookexternalhit|twitterbot|linkedinbot|slackbot/i.test(userAgent);
+
+  if (!isBot) {
+    return next(); // Let React handle it
+  }
+
+  const slug = req.params.slug.toLowerCase();
+  const articles = readJSON(articlesFile);
+  const article = articles.find(a => a.slug.toLowerCase() === slug);
+
+  if (!article) {
+    return res.status(404).send("Article not found");
+  }
+
+  const html = `
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta property="og:title" content="${article.title}" />
+      <meta property="og:description" content="${article.description || 'Read this article on Komnottra'}" />
+      <meta property="og:image" content="${article.image || 'https://www.komnottra.com/default-og-image.jpg'}" />
+      <meta property="og:url" content="https://www.komnottra.com/articles/${article.slug}" />
+      <meta property="og:type" content="article" />
+      <meta charset="utf-8" />
+      <title>${article.title}</title>
+    </head>
+    <body>
+      <p>Redirecting to article...</p>
+      <script>
+        window.location.href = "/articles/${article.slug}";
+      </script>
+    </body>
+    </html>
+  `;
+  res.send(html);
+});
+
+
 // === Start Server ===
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
