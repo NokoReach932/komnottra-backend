@@ -88,6 +88,7 @@ const slugify = (text) =>
     .replace(/-+$/, '');            
 
 // === Routes ===
+app.use("/uploads", express.static(path.resolve(__dirname, "uploads")));
 
 // --- Articles ---
 app.get("/articles/slug/:slug", (req, res) => {
