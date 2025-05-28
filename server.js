@@ -14,7 +14,6 @@ const PORT = process.env.PORT || 5000;
 // === CORS Setup ===
 const allowedOrigins = [
   "https://www.komnottra.com",
-  "https://www.komnottra.com:10000"
   "https://komnottra.com",
   "http://localhost:10000"
 ];
