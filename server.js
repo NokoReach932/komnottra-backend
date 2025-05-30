@@ -6,7 +6,17 @@ const archiver = require("archiver");
 const multer = require("multer");
 const unzipper = require("unzipper");
 
-const upload = multer({ storage: multer.memoryStorage() });
+const upload = multer({
+  storage: multer.diskStorage({
+    destination: uploadsDir,
+    filename: (req, file, cb) => {
+      const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1E9);
+      const ext = path.extname(file.originalname);
+      cb(null, `${file.fieldname}-${uniqueSuffix}${ext}`);
+    }
+  })
+});
+
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -39,6 +49,11 @@ const categoriesFile = path.join(dataDir, "categories.json");
 if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir);
 if (!fs.existsSync(articlesFile)) fs.writeFileSync(articlesFile, JSON.stringify([]));
 if (!fs.existsSync(categoriesFile)) fs.writeFileSync(categoriesFile, JSON.stringify([]));
+
+// === Setup uploads folder ===
+const uploadsDir = path.join(__dirname, "uploads");
+if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir);
+app.use("/uploads", express.static(uploadsDir));
 
 // === Read/Write Utilities ===
 const readJSON = (file) => {
@@ -96,20 +111,31 @@ app.get("/articles", (req, res) => {
   res.json(articles);
 });
 
-app.post("/articles", (req, res) => {
+app.post("/articles", upload.single("image"), async (req, res) => {
   try {
     const articles = readJSON(articlesFile);
-    const { title } = req.body;
+    const { title, content, category } = req.body;
+
     if (!title || typeof title !== "string") {
       return res.status(400).json({ message: "Title is required and must be a string" });
     }
+
     const baseSlug = slugify(title);
     let slug = baseSlug;
     let suffix = 1;
     while (articles.some(a => a.slug === slug)) {
       slug = `${baseSlug}-${suffix++}`;
     }
-    const newArticle = { ...req.body, id: Date.now(), slug };
+
+    const newArticle = {
+      id: Date.now(),
+      slug,
+      title,
+      content,
+      category,
+      imageUrl: req.file ? `/uploads/${req.file.filename}` : ""
+    };
+
     articles.unshift(newArticle);
     writeJSON(articlesFile, articles);
     res.status(201).json({ message: "Article added", article: newArticle });
@@ -118,6 +144,7 @@ app.post("/articles", (req, res) => {
     res.status(500).json({ message: "Internal server error" });
   }
 });
+
 
 app.delete("/articles/:id", (req, res) => {
   const articles = readJSON(articlesFile);
