@@ -18,8 +18,24 @@ const uploadsDir = path.join(dataDir, "uploads");
 if (!fs.existsSync(dataDir))    fs.mkdirSync(dataDir, { recursive: true });
 if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
 
-// Serve uploaded images
-app.use("/uploads", express.static(uploadsDir));
+console.log("Uploads directory:", uploadsDir);
+
+// --- Log all /uploads requests to debug ---
+app.use("/uploads", (req, res, next) => {
+  console.log(`Uploads request: ${req.method} ${req.originalUrl}`);
+  next();
+});
+
+// --- Serve uploaded images with explicit content-type headers ---
+app.use("/uploads", express.static(uploadsDir, {
+  setHeaders: (res, filePath) => {
+    if (filePath.endsWith(".png")) res.setHeader("Content-Type", "image/png");
+    else if (filePath.endsWith(".jpg") || filePath.endsWith(".jpeg")) res.setHeader("Content-Type", "image/jpeg");
+    else if (filePath.endsWith(".webp")) res.setHeader("Content-Type", "image/webp");
+    else if (filePath.endsWith(".gif")) res.setHeader("Content-Type", "image/gif");
+    // fallback or others can be set here
+  }
+}));
 
 // ------------------------------------------------------------------
 // Multer setup
@@ -84,8 +100,10 @@ const writeJSON = (f, d) => fs.writeFileSync(f, JSON.stringify(d, null, 2));
     }
   });
 
-  if (changed) writeJSON(articlesFile, articles);
-  if (changed) console.log("✅ Cleaned duplicate categories in articles.json");
+  if (changed) {
+    writeJSON(articlesFile, articles);
+    console.log("✅ Cleaned duplicate categories in articles.json");
+  }
 })();
 
 // ------------------------------------------------------------------
@@ -286,7 +304,6 @@ app.post("/admin/restore", upload.single("backup"), async (req, res) => {
 
     const art = zip.files.find(f => f.path === "articles.json");
     const cat = zip.files.find(f => f.path === "categories.json");
-    const imgDir = zip.files.find(f => f.path === "uploads/" || f.path.startsWith("uploads/"));
 
     if (!art || !cat) {
       return res.status(400).json({ message: "Archive missing required files" });
@@ -296,16 +313,14 @@ app.post("/admin/restore", upload.single("backup"), async (req, res) => {
     fs.writeFileSync(categoriesFile, await cat.buffer());
 
     // Extract uploads/ if it exists
-    if (imgDir) {
-      await Promise.all(zip.files.map(async file => {
-        if (file.path.startsWith("uploads/") && !file.path.endsWith("/")) {
-          const outPath = path.join(uploadsDir, file.path.replace("uploads/", ""));
-          const dir = path.dirname(outPath);
-          fs.mkdirSync(dir, { recursive: true });
-          fs.writeFileSync(outPath, await file.buffer());
-        }
-      }));
-    }
+    await Promise.all(zip.files.map(async file => {
+      if (file.path.startsWith("uploads/") && !file.path.endsWith("/")) {
+        const outPath = path.join(uploadsDir, file.path.replace("uploads/", ""));
+        const dir = path.dirname(outPath);
+        fs.mkdirSync(dir, { recursive: true });
+        fs.writeFileSync(outPath, await file.buffer());
+      }
+    }));
 
     // Delete zip file after restore
     fs.unlinkSync(req.file.path);
@@ -345,7 +360,7 @@ app.get("/share/:slug", (req, res) => {
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
+  <meta charset="UTF-8" />
   <meta property="og:title" content="${safeTitle}" />
   <meta property="og:image" content="${imageUrl}" />
   <meta property="og:type" content="article" />
