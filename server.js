@@ -321,12 +321,15 @@ app.post("/admin/restore", upload.single("backup"), async (req, res) => {
 // --- Social share redirect with OG tags ---
 app.get("/share/:slug", (req, res) => {
   const slug = req.params.slug.toLowerCase();
-  console.log("Share route hit for slug:", slug);
+  console.log("✅ Share route hit for slug:", slug);
+
   const articles = readJSON(articlesFile);
+  console.log("✅ Loaded articles:", articles.map(a => a.slug));
+
   const article = articles.find(a => a.slug === slug);
 
   if (!article) {
-    console.log("Article not found for slug:", slug);
+    console.log("❌ Article not found for slug:", slug);
     return res.status(404).send("Article not found");
   }
 
@@ -334,28 +337,29 @@ app.get("/share/:slug", (req, res) => {
     ? article.imageUrl
     : `https://komnottra.com${article.imageUrl}`;
 
-  const escapedTitle = article.title
-    ? article.title.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
-    : "";
+  const safeTitle = (article.title || "").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
-  const html = `
-  <!DOCTYPE html>
-  <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <title>${escapedTitle}</title>
-    <meta property="og:title" content="${escapedTitle}" />
-    <meta property="og:type" content="article" />
-    <meta property="og:url" content="https://komnottra.com/share/${slug}" />
-    <meta property="og:image" content="${imageUrl}" />
-    <meta property="og:description" content="${escapedTitle}" />
-    <meta name="twitter:card" content="summary_large_image" />
-    <meta http-equiv="refresh" content="0; url=https://komnottra.com/article/${slug}" />
-  </head>
-  <body>
-    <p>Redirecting to article...</p>
-  </body>
-  </html>`;
+  console.log("✅ Found article:", safeTitle);
+
+  res.send(`
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta property="og:title" content="${safeTitle}" />
+  <meta property="og:image" content="${imageUrl}" />
+  <meta property="og:type" content="article" />
+  <meta property="og:url" content="https://komnottra.com/share/${slug}" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta http-equiv="refresh" content="0; url=/article.html?slug=${slug}" />
+  <title>${safeTitle}</title>
+</head>
+<body>
+  Redirecting to article...
+</body>
+</html>
+  `);
+});
 
   res.send(html);
 });
