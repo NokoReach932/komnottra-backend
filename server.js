@@ -6,10 +6,16 @@ const archiver = require("archiver");
 const multer = require("multer");
 const unzipper = require("unzipper");
 
+const app = express();  // Initialize Express app here
+
+// Setup uploads directory and create if it doesn't exist
 const uploadsDir = path.join(__dirname, "uploads");
 if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir);
+
+// Serve static files from uploads directory
 app.use("/uploads", express.static(uploadsDir));
 
+// Configure multer for file uploads
 const upload = multer({
   storage: multer.diskStorage({
     destination: uploadsDir,
@@ -21,9 +27,6 @@ const upload = multer({
   })
 });
 
-
-
-const app = express();
 const PORT = process.env.PORT || 5000;
 
 // === CORS Setup ===
@@ -35,7 +38,7 @@ const allowedOrigins = [
 
 app.use(cors({
   origin: function (origin, callback) {
-    console.log("CORS request from origin:", origin);  // <-- Add this line here
+    console.log("CORS request from origin:", origin);
     if (!origin || allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
@@ -55,11 +58,6 @@ const categoriesFile = path.join(dataDir, "categories.json");
 if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir);
 if (!fs.existsSync(articlesFile)) fs.writeFileSync(articlesFile, JSON.stringify([]));
 if (!fs.existsSync(categoriesFile)) fs.writeFileSync(categoriesFile, JSON.stringify([]));
-
-// === Setup uploads folder ===
-const uploadsDir = path.join(__dirname, "uploads");
-if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir);
-app.use("/uploads", express.static(uploadsDir));
 
 // === Read/Write Utilities ===
 const readJSON = (file) => {
@@ -150,7 +148,6 @@ app.post("/articles", upload.single("image"), async (req, res) => {
     res.status(500).json({ message: "Internal server error" });
   }
 });
-
 
 app.delete("/articles/:id", (req, res) => {
   const articles = readJSON(articlesFile);
