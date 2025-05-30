@@ -111,11 +111,13 @@ const writeJSON = (f, d) => fs.writeFileSync(f, JSON.stringify(d, null, 2));
 // ------------------------------------------------------------------
 const slugify = txt =>
   txt.toString().toLowerCase()
-     .replace(/\s+/g, "-")
-     .replace(/[^\w\-]+/g, "")
-     .replace(/\-\-+/g, "-")
-     .replace(/^-+/, "")
-     .replace(/-+$/, "");
+     .normalize("NFKD") // normalize unicode
+     .replace(/\s+/g, "-") // replace spaces with dash
+     .replace(/[^\p{L}\p{N}-]+/gu, "") // remove chars except unicode letters/numbers/dash
+     .replace(/\-\-+/g, "-") // collapse multiple dashes
+     .replace(/^-+/, "") // trim start dashes
+     .replace(/-+$/, ""); // trim end dashes
+
 
 // ------------------------------------------------------------------
 // Routes
@@ -124,8 +126,11 @@ const slugify = txt =>
 // --- Get article by slug ---
 app.get("/articles/slug/:slug", (req, res) => {
   const articles = readJSON(articlesFile);
-  const slug = req.params.slug.toLowerCase();
-  const article = articles.find(a => a.slug?.toLowerCase() === slug);
+  const reqSlug = req.params.slug.toLowerCase().normalize("NFKD");
+const article = articles.find(a => 
+  a.slug && a.slug.toLowerCase().normalize("NFKD") === reqSlug
+);
+
   if (!article) return res.status(404).json({ message: "Article not found" });
   res.json(article);
 });
