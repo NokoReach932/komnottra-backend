@@ -5,6 +5,7 @@ const cors     = require("cors");
 const archiver = require("archiver");
 const multer   = require("multer");
 const unzipper = require("unzipper");
+const sharp    = require("sharp");
 
 const app = express(); // Initialize Express app
 
@@ -133,12 +134,12 @@ app.get("/articles", (req, res) => {
   res.json(articles);
 });
 
-// --- Create article ---
-app.post("/articles", upload.single("image"), (req, res) => {
+// --- Create article with image compression ---
+app.post("/articles", upload.single("image"), async (req, res) => {
   try {
-    const articles          = readJSON(articlesFile);
+    const articles = readJSON(articlesFile);
     const { title, content } = req.body;
-    let   { category }       = req.body;
+    let { category } = req.body;
 
     if (!title || typeof title !== "string") {
       return res.status(400).json({ message: "Title is required and must be a string" });
@@ -159,13 +160,29 @@ app.post("/articles", upload.single("image"), (req, res) => {
     let slug = baseSlug, i = 1;
     while (articles.some(a => a.slug === slug)) slug = `${baseSlug}-${i++}`;
 
+    // Compress image (if provided)
+    let imageUrl = "";
+    if (req.file) {
+      const compressedFilename = "compressed-" + req.file.filename;
+      const compressedPath = path.join(uploadsDir, compressedFilename);
+
+      await sharp(req.file.path)
+        .resize({ width: 1200, withoutEnlargement: true }) // max width 1200px, no enlargement
+        .jpeg({ quality: 70 })                             // compress to 70% quality
+        .toFile(compressedPath);
+
+      fs.unlinkSync(req.file.path); // delete original
+
+      imageUrl = `/uploads/${compressedFilename}`;
+    }
+
     const newArticle = {
-      id       : Date.now(),
+      id: Date.now(),
       slug,
       title,
       content,
       category,
-      imageUrl : req.file ? `/uploads/${req.file.filename}` : ""
+      imageUrl
     };
 
     articles.unshift(newArticle);
