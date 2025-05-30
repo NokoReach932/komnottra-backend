@@ -158,6 +158,7 @@ app.post("/articles", upload.single("image"), (req, res) => {
   }
 });
 
+
 // Delete article by id
 app.delete("/articles/:id", (req, res) => {
   const articles = readJSON(articlesFile);
