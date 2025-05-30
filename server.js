@@ -127,10 +127,23 @@ app.get("/articles", (req, res) => {
 app.post("/articles", upload.single("image"), (req, res) => {
   try {
     const articles = readJSON(articlesFile);
-    const { title, content, category } = req.body;
+    const { title, content } = req.body;
+    let { category } = req.body;
 
     if (!title || typeof title !== "string") {
       return res.status(400).json({ message: "Title is required and must be a string" });
+    }
+
+    // --- Normalize and clean category ---
+    if (Array.isArray(category)) {
+      // Remove duplicates and trim
+      const uniqueCategories = [...new Set(category.map(c => c.trim()).filter(Boolean))];
+      category = uniqueCategories.length === 1 ? uniqueCategories[0] : uniqueCategories;
+    } else if (typeof category === "string") {
+      category = category.trim();
+      if (category === "") category = null;
+    } else {
+      category = null;
     }
 
     const baseSlug = slugify(title);
@@ -157,7 +170,6 @@ app.post("/articles", upload.single("image"), (req, res) => {
     res.status(500).json({ message: "Internal server error" });
   }
 });
-
 
 // Delete article by id
 app.delete("/articles/:id", (req, res) => {
