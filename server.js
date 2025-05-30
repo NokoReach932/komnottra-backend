@@ -134,7 +134,7 @@ app.get("/articles", (req, res) => {
   res.json(articles);
 });
 
-// --- Create article with image compression ---
+// --- Create article with image compression + blur placeholder ---
 app.post("/articles", upload.single("image"), async (req, res) => {
   try {
     const articles = readJSON(articlesFile);
@@ -160,29 +160,42 @@ app.post("/articles", upload.single("image"), async (req, res) => {
     let slug = baseSlug, i = 1;
     while (articles.some(a => a.slug === slug)) slug = `${baseSlug}-${i++}`;
 
-    // Compress image (if provided)
+    // Compress image & generate blurred placeholder
     let imageUrl = "";
+    let blurDataUrl = "";
+
     if (req.file) {
-      const compressedFilename = "compressed-" + req.file.filename;
+      const compressedFilename = `compressed-${req.file.filename}`;
       const compressedPath = path.join(uploadsDir, compressedFilename);
 
-      await sharp(req.file.path)
-        .resize({ width: 1200, withoutEnlargement: true }) // max width 1200px, no enlargement
-        .jpeg({ quality: 70 })                             // compress to 70% quality
-        .toFile(compressedPath);
+      // Main compressed image buffer
+      const imgBuffer = await sharp(req.file.path)
+        .resize({ width: 1200, withoutEnlargement: true })
+        .jpeg({ quality: 70 })
+        .toBuffer();
 
-      fs.unlinkSync(req.file.path); // delete original
-
+      fs.writeFileSync(compressedPath, imgBuffer);
       imageUrl = `/uploads/${compressedFilename}`;
+
+      // Tiny blurred base64 placeholder
+      const tinyBuffer = await sharp(imgBuffer)
+        .resize(20)
+        .blur()
+        .toBuffer();
+
+      blurDataUrl = `data:image/jpeg;base64,${tinyBuffer.toString("base64")}`;
+
+      fs.unlinkSync(req.file.path); // remove original upload
     }
 
     const newArticle = {
-      id: Date.now(),
+      id        : Date.now(),
       slug,
       title,
       content,
       category,
-      imageUrl
+      imageUrl,
+      blurDataUrl
     };
 
     articles.unshift(newArticle);
@@ -261,6 +274,7 @@ app.post("/admin/restore", upload.single("backup"), async (req, res) => {
   }
 });
 
+// --- Social share redirect with OG tags ---
 app.get("/share/:slug", (req, res) => {
   const slug = req.params.slug.toLowerCase();
   const articles = readJSON(articlesFile);
