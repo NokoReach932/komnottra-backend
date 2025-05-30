@@ -6,21 +6,29 @@ const archiver = require("archiver");
 const multer = require("multer");
 const unzipper = require("unzipper");
 
-const app = express();  // Initialize Express app here
+const app = express();  // Initialize Express app
 
-// Setup uploads directory and create if it doesn't exist
-const uploadsDir = path.join(__dirname, "uploads");
-if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir);
+// Base persistent data directory on Render
+const dataDir = "/komnottra/data";
+
+// Ensure data directory exists
+if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
+
+// Uploads directory inside persistent disk
+const uploadsDir = path.join(dataDir, "uploads");
+
+// Ensure uploads directory exists
+if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
 
 // Serve static files from uploads directory
 app.use("/uploads", express.static(uploadsDir));
 
-// Configure multer for file uploads
+// Configure multer to store uploads in uploadsDir
 const upload = multer({
   storage: multer.diskStorage({
     destination: uploadsDir,
     filename: (req, file, cb) => {
-      const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1E9);
+      const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
       const ext = path.extname(file.originalname);
       cb(null, `${file.fieldname}-${uniqueSuffix}${ext}`);
     }
@@ -49,17 +57,15 @@ app.use(cors({
 
 app.use(express.json({ limit: "5mb" }));
 
-// === Use __dirname to locate data folder relative to app location ===
-const dataDir = path.resolve(__dirname, "data");
+// JSON data file paths inside persistent disk
 const articlesFile = path.join(dataDir, "articles.json");
 const categoriesFile = path.join(dataDir, "categories.json");
 
-// === Ensure folder and files exist ===
-if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir);
+// Ensure articles.json and categories.json exist
 if (!fs.existsSync(articlesFile)) fs.writeFileSync(articlesFile, JSON.stringify([]));
 if (!fs.existsSync(categoriesFile)) fs.writeFileSync(categoriesFile, JSON.stringify([]));
 
-// === Read/Write Utilities ===
+// Read JSON utility
 const readJSON = (file) => {
   try {
     const data = fs.readFileSync(file);
@@ -70,6 +76,7 @@ const readJSON = (file) => {
   }
 };
 
+// Write JSON utility
 const writeJSON = (file, data) => {
   try {
     fs.writeFileSync(file, JSON.stringify(data, null, 2));
@@ -79,18 +86,18 @@ const writeJSON = (file, data) => {
   }
 };
 
-// === Utility: Slugify ===
-const slugify = (text) => 
+// Slugify utility
+const slugify = (text) =>
   text.toString().toLowerCase()
-    .replace(/\s+/g, '-')           
-    .replace(/[^\w\-]+/g, '')       
-    .replace(/\-\-+/g, '-')         
-    .replace(/^-+/, '')             
-    .replace(/-+$/, '');            
+    .replace(/\s+/g, "-")
+    .replace(/[^\w\-]+/g, "")
+    .replace(/\-\-+/g, "-")
+    .replace(/^-+/, "")
+    .replace(/-+$/, "");
 
-// === Routes ===
+// --- Routes ---
 
-// --- Articles ---
+// Get article by slug
 app.get("/articles/slug/:slug", (req, res) => {
   const articles = readJSON(articlesFile);
   const slug = req.params.slug.toLowerCase();
@@ -99,6 +106,7 @@ app.get("/articles/slug/:slug", (req, res) => {
   res.json(article);
 });
 
+// Get all articles with optional filtering
 app.get("/articles", (req, res) => {
   let articles = readJSON(articlesFile);
   const { category, excludeId } = req.query;
@@ -115,7 +123,8 @@ app.get("/articles", (req, res) => {
   res.json(articles);
 });
 
-app.post("/articles", upload.single("image"), async (req, res) => {
+// Create new article with optional image upload
+app.post("/articles", upload.single("image"), (req, res) => {
   try {
     const articles = readJSON(articlesFile);
     const { title, content, category } = req.body;
@@ -149,6 +158,7 @@ app.post("/articles", upload.single("image"), async (req, res) => {
   }
 });
 
+// Delete article by id
 app.delete("/articles/:id", (req, res) => {
   const articles = readJSON(articlesFile);
   const id = parseInt(req.params.id);
@@ -160,12 +170,13 @@ app.delete("/articles/:id", (req, res) => {
   res.json({ message: "Article deleted" });
 });
 
-// --- Categories ---
+// Get categories
 app.get("/categories", (req, res) => {
   const categories = readJSON(categoriesFile);
   res.json(categories);
 });
 
+// Add category
 app.post("/categories", (req, res) => {
   const { category } = req.body;
   if (!category || typeof category !== "string" || category.trim() === "") {
@@ -180,6 +191,7 @@ app.post("/categories", (req, res) => {
   res.status(201).json({ message: "Category added", category });
 });
 
+// Delete category
 app.delete("/categories/:category", (req, res) => {
   const categoryToDelete = decodeURIComponent(req.params.category);
   const categories = readJSON(categoriesFile);
@@ -191,9 +203,7 @@ app.delete("/categories/:category", (req, res) => {
   res.json({ message: "Category deleted" });
 });
 
-// --- Admin Backup & Restore ---
-
-// Backup endpoint - archive articles.json and categories.json into backup.zip
+// Admin backup - archive JSON files
 app.get("/admin/backup", (req, res) => {
   const archive = archiver("zip", { zlib: { level: 9 } });
   res.attachment("backup.zip");
@@ -204,14 +214,12 @@ app.get("/admin/backup", (req, res) => {
   });
 
   archive.pipe(res);
-
   archive.file(articlesFile, { name: "articles.json" });
   archive.file(categoriesFile, { name: "categories.json" });
-
   archive.finalize();
 });
 
-// Restore endpoint - upload a zip containing articles.json and categories.json to restore data
+// Admin restore - upload backup zip and restore JSON files
 app.post("/admin/restore", upload.single("backup"), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ message: "No file uploaded" });
@@ -234,7 +242,7 @@ app.post("/admin/restore", upload.single("backup"), async (req, res) => {
   }
 });
 
-// === Start Server ===
+// Start server
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
