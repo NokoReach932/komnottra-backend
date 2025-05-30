@@ -332,27 +332,33 @@ app.get("/share/:slug", (req, res) => {
     ? article.imageUrl
     : `https://komnottra.com${article.imageUrl}`;
 
-  const safeTitle = (article.title || "").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const escapedTitle = article.title
+    ? article.title.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    : "";
 
-  res.send(`
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta property="og:title" content="${safeTitle}" />
-  <meta property="og:image" content="${imageUrl}" />
-  <meta property="og:type" content="article" />
-  <meta property="og:url" content="https://komnottra.com/article.html?slug=${slug}" />
-  <meta name="twitter:card" content="summary_large_image" />
-  <meta http-equiv="refresh" content="0; url=/article.html?slug=${slug}" />
-  <title>${safeTitle}</title>
-</head>
-<body>
-  Redirecting to article...
-</body>
-</html>
-  `);
+  const html = `
+  <!DOCTYPE html>
+  <html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>${escapedTitle}</title>
+    <meta property="og:title" content="${escapedTitle}" />
+    <meta property="og:type" content="article" />
+    <meta property="og:url" content="https://komnottra.com/share/${slug}" />
+    <meta property="og:image" content="${imageUrl}" />
+    <meta property="og:description" content="${escapedTitle}" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta http-equiv="refresh" content="0; url=https://komnottra.com/article/${slug}" />
+  </head>
+  <body>
+    <p>Redirecting to article...</p>
+  </body>
+  </html>`;
+
+  res.send(html);
 });
 
+// ------------------------------------------------------------------
+// Start server
 // ------------------------------------------------------------------
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
