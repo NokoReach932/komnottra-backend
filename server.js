@@ -277,35 +277,44 @@ app.get("/admin/backup", (req, res) => {
 // --- Admin restore (articles, categories, and images) ---
 app.post("/admin/restore", upload.single("backup"), async (req, res) => {
   try {
-    if (!req.file) return res.status(400).json({ message: "No file uploaded" });
+    if (!req.file || !req.file.path) {
+      return res.status(400).json({ message: "No file uploaded or file path missing" });
+    }
 
+    // Unzip from disk path
     const zip = await unzipper.Open.file(req.file.path);
+
     const art = zip.files.find(f => f.path === "articles.json");
     const cat = zip.files.find(f => f.path === "categories.json");
-    if (!art || !cat) return res.status(400).json({ message: "Archive missing required files" });
+    const imgDir = zip.files.find(f => f.path === "uploads/" || f.path.startsWith("uploads/"));
 
-    // Clear current uploadsDir before restore images
-    fs.rmSync(uploadsDir, { recursive: true, force: true });
-    fs.mkdirSync(uploadsDir, { recursive: true });
+    if (!art || !cat) {
+      return res.status(400).json({ message: "Archive missing required files" });
+    }
 
-    // Extract articles.json and categories.json
     fs.writeFileSync(articlesFile, await art.buffer());
     fs.writeFileSync(categoriesFile, await cat.buffer());
 
-    // Extract uploads/ folder files
-    const uploadFiles = zip.files.filter(f => f.path.startsWith("uploads/"));
-    for (const file of uploadFiles) {
-      const filePath = path.join(dataDir, file.path);
-      const dir = path.dirname(filePath);
-      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-      const content = await file.buffer();
-      fs.writeFileSync(filePath, content);
+    // Extract uploads/ if it exists
+    if (imgDir) {
+      await Promise.all(zip.files.map(async file => {
+        if (file.path.startsWith("uploads/") && !file.path.endsWith("/")) {
+          const outPath = path.join(uploadsDir, file.path.replace("uploads/", ""));
+          const dir = path.dirname(outPath);
+          fs.mkdirSync(dir, { recursive: true });
+          fs.writeFileSync(outPath, await file.buffer());
+        }
+      }));
     }
 
+    // Delete zip file after restore
+    fs.unlinkSync(req.file.path);
+
     res.json({ message: "Restore successful" });
+
   } catch (e) {
     console.error("Restore error:", e);
-    res.status(500).json({ message: "Internal server error" });
+    res.status(500).json({ message: "Internal server error during restore" });
   }
 });
 
