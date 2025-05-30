@@ -207,16 +207,30 @@ app.post("/articles", upload.single("image"), async (req, res) => {
   }
 });
 
-// --- Delete article ---
+// --- Delete article with image cleanup ---
 app.delete("/articles/:id", (req, res) => {
   const articles = readJSON(articlesFile);
   const id = Number(req.params.id);
-  const filtered = articles.filter(a => a.id !== id);
-  if (filtered.length === articles.length) {
+  const article = articles.find(a => a.id === id);
+  if (!article) {
     return res.status(404).json({ message: "Article not found" });
   }
+
+  // Delete associated image file if exists and is local
+  if (article.imageUrl && article.imageUrl.startsWith("/uploads/")) {
+    const imagePath = path.join(dataDir, article.imageUrl);
+    if (fs.existsSync(imagePath)) {
+      try {
+        fs.unlinkSync(imagePath);
+      } catch (err) {
+        console.error("Failed to delete image file:", err);
+      }
+    }
+  }
+
+  const filtered = articles.filter(a => a.id !== id);
   writeJSON(articlesFile, filtered);
-  res.json({ message: "Article deleted" });
+  res.json({ message: "Article and associated image deleted" });
 });
 
 // --- Categories ---
@@ -244,18 +258,23 @@ app.delete("/categories/:category", (req, res) => {
   res.json({ message: "Category deleted" });
 });
 
-// --- Admin backup ---
+// --- Admin backup (articles, categories, and images) ---
 app.get("/admin/backup", (req, res) => {
   const archive = archiver("zip", { zlib: { level: 9 } });
   res.attachment("backup.zip");
   archive.on("error", err => { console.error(err); res.status(500).end(); });
   archive.pipe(res);
+
   archive.file(articlesFile,   { name: "articles.json" });
   archive.file(categoriesFile, { name: "categories.json" });
+
+  // Add all images from uploadsDir to archive under uploads/
+  archive.directory(uploadsDir, "uploads");
+
   archive.finalize();
 });
 
-// --- Admin restore ---
+// --- Admin restore (articles, categories, and images) ---
 app.post("/admin/restore", upload.single("backup"), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ message: "No file uploaded" });
@@ -265,8 +284,24 @@ app.post("/admin/restore", upload.single("backup"), async (req, res) => {
     const cat = zip.files.find(f => f.path === "categories.json");
     if (!art || !cat) return res.status(400).json({ message: "Archive missing required files" });
 
+    // Clear current uploadsDir before restore images
+    fs.rmSync(uploadsDir, { recursive: true, force: true });
+    fs.mkdirSync(uploadsDir, { recursive: true });
+
+    // Extract articles.json and categories.json
     fs.writeFileSync(articlesFile, await art.buffer());
     fs.writeFileSync(categoriesFile, await cat.buffer());
+
+    // Extract uploads/ folder files
+    const uploadFiles = zip.files.filter(f => f.path.startsWith("uploads/"));
+    for (const file of uploadFiles) {
+      const filePath = path.join(dataDir, file.path);
+      const dir = path.dirname(filePath);
+      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+      const content = await file.buffer();
+      fs.writeFileSync(filePath, content);
+    }
+
     res.json({ message: "Restore successful" });
   } catch (e) {
     console.error("Restore error:", e);
