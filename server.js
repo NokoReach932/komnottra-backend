@@ -6,6 +6,10 @@ const archiver = require("archiver");
 const multer = require("multer");
 const unzipper = require("unzipper");
 
+const uploadsDir = path.join(__dirname, "uploads");
+if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir);
+app.use("/uploads", express.static(uploadsDir));
+
 const upload = multer({
   storage: multer.diskStorage({
     destination: uploadsDir,
@@ -16,6 +20,7 @@ const upload = multer({
     }
   })
 });
+
 
 
 const app = express();
