@@ -279,7 +279,7 @@ app.post("/admin/restore", upload.single("backup"), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ message: "No file uploaded" });
 
-    const zip = await unzipper.Open.buffer(req.file.buffer);
+    const zip = await unzipper.Open.file(req.file.path);
     const art = zip.files.find(f => f.path === "articles.json");
     const cat = zip.files.find(f => f.path === "categories.json");
     if (!art || !cat) return res.status(400).json({ message: "Archive missing required files" });
