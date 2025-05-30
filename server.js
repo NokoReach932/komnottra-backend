@@ -321,10 +321,12 @@ app.post("/admin/restore", upload.single("backup"), async (req, res) => {
 // --- Social share redirect with OG tags ---
 app.get("/share/:slug", (req, res) => {
   const slug = req.params.slug.toLowerCase();
+  console.log("Share route hit for slug:", slug);
   const articles = readJSON(articlesFile);
   const article = articles.find(a => a.slug === slug);
 
   if (!article) {
+    console.log("Article not found for slug:", slug);
     return res.status(404).send("Article not found");
   }
 
