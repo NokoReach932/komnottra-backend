@@ -244,5 +244,40 @@ app.post("/admin/restore", upload.single("backup"), async (req, res) => {
   }
 });
 
+app.get("/share/:slug", (req, res) => {
+  const slug = req.params.slug.toLowerCase();
+  const articles = readJSON(articlesFile);
+  const article = articles.find(a => a.slug === slug);
+
+  if (!article) {
+    return res.status(404).send("Article not found");
+  }
+
+  const imageUrl = article.imageUrl?.startsWith("http")
+    ? article.imageUrl
+    : `https://komnottra.com${article.imageUrl}`;
+
+  const safeTitle = (article.title || "").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+  res.send(`
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta property="og:title" content="${safeTitle}" />
+  <meta property="og:image" content="${imageUrl}" />
+  <meta property="og:type" content="article" />
+  <meta property="og:url" content="https://komnottra.com/article.html?slug=${slug}" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta http-equiv="refresh" content="0; url=/article.html?slug=${slug}" />
+  <title>${safeTitle}</title>
+</head>
+<body>
+  Redirecting to article...
+</body>
+</html>
+  `);
+});
+
 // ------------------------------------------------------------------
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
