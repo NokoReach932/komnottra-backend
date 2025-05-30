@@ -1,181 +1,187 @@
-const express = require("express");
-const fs = require("fs");
-const path = require("path");
-const cors = require("cors");
+const express  = require("express");
+const fs       = require("fs");
+const path     = require("path");
+const cors     = require("cors");
 const archiver = require("archiver");
-const multer = require("multer");
+const multer   = require("multer");
 const unzipper = require("unzipper");
 
-const app = express();  // Initialize Express app
+const app = express(); // Initialize Express app
 
-// Base persistent data directory on Render
-const dataDir = "/komnottra/data";
-
-// Ensure data directory exists
-if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
-
-// Uploads directory inside persistent disk
+// ------------------------------------------------------------------
+// Persistent-disk folders (Render)
+// ------------------------------------------------------------------
+const dataDir    = "/komnottra/data";
 const uploadsDir = path.join(dataDir, "uploads");
 
-// Ensure uploads directory exists
+if (!fs.existsSync(dataDir))    fs.mkdirSync(dataDir, { recursive: true });
 if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
 
-// Serve static files from uploads directory
+// Serve uploaded images
 app.use("/uploads", express.static(uploadsDir));
 
-// Configure multer to store uploads in uploadsDir
+// ------------------------------------------------------------------
+// Multer setup
+// ------------------------------------------------------------------
 const upload = multer({
   storage: multer.diskStorage({
     destination: uploadsDir,
     filename: (req, file, cb) => {
-      const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
-      const ext = path.extname(file.originalname);
-      cb(null, `${file.fieldname}-${uniqueSuffix}${ext}`);
+      const unique = Date.now() + "-" + Math.round(Math.random() * 1e9);
+      cb(null, `${file.fieldname}-${unique}${path.extname(file.originalname)}`);
     }
   })
 });
 
+// ------------------------------------------------------------------
+// Misc setup
+// ------------------------------------------------------------------
 const PORT = process.env.PORT || 5000;
 
-// === CORS Setup ===
 const allowedOrigins = [
   "https://www.komnottra.com",
   "https://komnottra.com",
   "http://localhost:5000"
 ];
-
 app.use(cors({
-  origin: function (origin, callback) {
-    console.log("CORS request from origin:", origin);
-    if (!origin || allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      callback(new Error("Not allowed by CORS"));
-    }
+  origin: (origin, cb) => {
+    console.log("CORS from:", origin);
+    if (!origin || allowedOrigins.includes(origin)) cb(null, true);
+    else cb(new Error("Not allowed by CORS"));
   }
 }));
 
 app.use(express.json({ limit: "5mb" }));
 
-// JSON data file paths inside persistent disk
-const articlesFile = path.join(dataDir, "articles.json");
+// ------------------------------------------------------------------
+// JSON files & helpers
+// ------------------------------------------------------------------
+const articlesFile   = path.join(dataDir, "articles.json");
 const categoriesFile = path.join(dataDir, "categories.json");
 
-// Ensure articles.json and categories.json exist
-if (!fs.existsSync(articlesFile)) fs.writeFileSync(articlesFile, JSON.stringify([]));
-if (!fs.existsSync(categoriesFile)) fs.writeFileSync(categoriesFile, JSON.stringify([]));
+if (!fs.existsSync(articlesFile))   fs.writeFileSync(articlesFile, "[]");
+if (!fs.existsSync(categoriesFile)) fs.writeFileSync(categoriesFile, "[]");
 
-// Read JSON utility
-const readJSON = (file) => {
-  try {
-    const data = fs.readFileSync(file);
-    return JSON.parse(data);
-  } catch (err) {
-    console.error("Failed to read file:", file, err);
-    return [];
-  }
-};
+const readJSON  = f => JSON.parse(fs.readFileSync(f, "utf-8") || "[]");
+const writeJSON = (f, d) => fs.writeFileSync(f, JSON.stringify(d, null, 2));
 
-// Write JSON utility
-const writeJSON = (file, data) => {
-  try {
-    fs.writeFileSync(file, JSON.stringify(data, null, 2));
-    console.log("Successfully wrote to", file);
-  } catch (err) {
-    console.error("Failed to write file:", file, err);
-  }
-};
+// ------------------------------------------------------------------
+// ONE-TIME CLEANUP of duplicated category arrays
+// ------------------------------------------------------------------
+(function cleanArticlesFile() {
+  const articles = readJSON(articlesFile);
+  let changed = false;
 
-// Slugify utility
-const slugify = (text) =>
-  text.toString().toLowerCase()
-    .replace(/\s+/g, "-")
-    .replace(/[^\w\-]+/g, "")
-    .replace(/\-\-+/g, "-")
-    .replace(/^-+/, "")
-    .replace(/-+$/, "");
+  articles.forEach(a => {
+    if (Array.isArray(a.category)) {
+      const unique = [...new Set(a.category.map(c => c.trim()).filter(Boolean))];
+      const cleaned = unique.length === 1 ? unique[0] : unique;
+      if (JSON.stringify(cleaned) !== JSON.stringify(a.category)) {
+        a.category = cleaned;
+        changed = true;
+      }
+    }
+  });
 
-// --- Routes ---
+  if (changed) writeJSON(articlesFile, articles);
+  if (changed) console.log("✅ Cleaned duplicate categories in articles.json");
+})();
 
-// Get article by slug
+// ------------------------------------------------------------------
+// Utils
+// ------------------------------------------------------------------
+const slugify = txt =>
+  txt.toString().toLowerCase()
+     .replace(/\s+/g, "-")
+     .replace(/[^\w\-]+/g, "")
+     .replace(/\-\-+/g, "-")
+     .replace(/^-+/, "")
+     .replace(/-+$/, "");
+
+// ------------------------------------------------------------------
+// Routes
+// ------------------------------------------------------------------
+
+// --- Get article by slug ---
 app.get("/articles/slug/:slug", (req, res) => {
   const articles = readJSON(articlesFile);
   const slug = req.params.slug.toLowerCase();
-  const article = articles.find(a => a.slug && a.slug.toLowerCase() === slug);
+  const article = articles.find(a => a.slug?.toLowerCase() === slug);
   if (!article) return res.status(404).json({ message: "Article not found" });
   res.json(article);
 });
 
-// Get all articles with optional filtering
+// --- Get all articles (optional filtering) ---
 app.get("/articles", (req, res) => {
   let articles = readJSON(articlesFile);
   const { category, excludeId } = req.query;
+
   if (category) {
-    const categoryLower = category.toLowerCase();
-    articles = articles.filter(article => article.category?.toLowerCase() === categoryLower);
+    const catLower = category.toLowerCase();
+    articles = articles.filter(a => {
+      if (Array.isArray(a.category)) return a.category.some(c => c.toLowerCase() === catLower);
+      if (typeof a.category === "string") return a.category.toLowerCase() === catLower;
+      return false;
+    });
   }
+
   if (excludeId) {
-    const excludeIdNum = parseInt(excludeId);
-    if (!isNaN(excludeIdNum)) {
-      articles = articles.filter(article => article.id !== excludeIdNum);
-    }
+    const ex = Number(excludeId);
+    if (!isNaN(ex)) articles = articles.filter(a => a.id !== ex);
   }
+
   res.json(articles);
 });
 
-// Create new article with optional image upload
+// --- Create article ---
 app.post("/articles", upload.single("image"), (req, res) => {
   try {
-    const articles = readJSON(articlesFile);
+    const articles          = readJSON(articlesFile);
     const { title, content } = req.body;
-    let { category } = req.body;
+    let   { category }       = req.body;
 
     if (!title || typeof title !== "string") {
       return res.status(400).json({ message: "Title is required and must be a string" });
     }
 
-    // --- Normalize and clean category ---
+    // Normalize category
     if (Array.isArray(category)) {
-      // Remove duplicates and trim
-      const uniqueCategories = [...new Set(category.map(c => c.trim()).filter(Boolean))];
-      category = uniqueCategories.length === 1 ? uniqueCategories[0] : uniqueCategories;
+      const unique = [...new Set(category.map(c => c.trim()).filter(Boolean))];
+      category = unique.length === 1 ? unique[0] : unique;
     } else if (typeof category === "string") {
-      category = category.trim();
-      if (category === "") category = null;
+      category = category.trim() || null;
     } else {
       category = null;
     }
 
+    // Unique slug
     const baseSlug = slugify(title);
-    let slug = baseSlug;
-    let suffix = 1;
-    while (articles.some(a => a.slug === slug)) {
-      slug = `${baseSlug}-${suffix++}`;
-    }
+    let slug = baseSlug, i = 1;
+    while (articles.some(a => a.slug === slug)) slug = `${baseSlug}-${i++}`;
 
     const newArticle = {
-      id: Date.now(),
+      id       : Date.now(),
       slug,
       title,
       content,
       category,
-      imageUrl: req.file ? `/uploads/${req.file.filename}` : ""
+      imageUrl : req.file ? `/uploads/${req.file.filename}` : ""
     };
 
     articles.unshift(newArticle);
     writeJSON(articlesFile, articles);
     res.status(201).json({ message: "Article added", article: newArticle });
-  } catch (err) {
-    console.error("Error adding article:", err);
+  } catch (e) {
+    console.error("Add article error:", e);
     res.status(500).json({ message: "Internal server error" });
   }
 });
 
-// Delete article by id
+// --- Delete article ---
 app.delete("/articles/:id", (req, res) => {
   const articles = readJSON(articlesFile);
-  const id = parseInt(req.params.id);
-  const filtered = articles.filter(article => article.id !== id);
+  const id = Number(req.params.id);
+  const filtered = articles.filter(a => a.id !== id);
   if (filtered.length === articles.length) {
     return res.status(404).json({ message: "Article not found" });
   }
@@ -183,79 +189,60 @@ app.delete("/articles/:id", (req, res) => {
   res.json({ message: "Article deleted" });
 });
 
-// Get categories
-app.get("/categories", (req, res) => {
-  const categories = readJSON(categoriesFile);
-  res.json(categories);
-});
+// --- Categories ---
+app.get("/categories", (_req, res) => res.json(readJSON(categoriesFile)));
 
-// Add category
 app.post("/categories", (req, res) => {
   const { category } = req.body;
-  if (!category || typeof category !== "string" || category.trim() === "") {
+  if (!category || typeof category !== "string" || !category.trim())
     return res.status(400).json({ message: "Invalid category" });
-  }
-  const categories = readJSON(categoriesFile);
-  if (categories.includes(category)) {
-    return res.status(409).json({ message: "Category already exists" });
-  }
-  categories.push(category);
-  writeJSON(categoriesFile, categories);
+
+  const cats = readJSON(categoriesFile);
+  if (cats.includes(category)) return res.status(409).json({ message: "Category already exists" });
+
+  cats.push(category);
+  writeJSON(categoriesFile, cats);
   res.status(201).json({ message: "Category added", category });
 });
 
-// Delete category
 app.delete("/categories/:category", (req, res) => {
-  const categoryToDelete = decodeURIComponent(req.params.category);
-  const categories = readJSON(categoriesFile);
-  if (!categories.includes(categoryToDelete)) {
-    return res.status(404).json({ message: "Category not found" });
-  }
-  const updated = categories.filter(cat => cat !== categoryToDelete);
-  writeJSON(categoriesFile, updated);
+  const target = decodeURIComponent(req.params.category);
+  const cats = readJSON(categoriesFile);
+  if (!cats.includes(target)) return res.status(404).json({ message: "Category not found" });
+
+  writeJSON(categoriesFile, cats.filter(c => c !== target));
   res.json({ message: "Category deleted" });
 });
 
-// Admin backup - archive JSON files
+// --- Admin backup ---
 app.get("/admin/backup", (req, res) => {
   const archive = archiver("zip", { zlib: { level: 9 } });
   res.attachment("backup.zip");
-
-  archive.on("error", err => {
-    console.error("Archive error:", err);
-    res.status(500).send({ message: "Archive error" });
-  });
-
+  archive.on("error", err => { console.error(err); res.status(500).end(); });
   archive.pipe(res);
-  archive.file(articlesFile, { name: "articles.json" });
+  archive.file(articlesFile,   { name: "articles.json" });
   archive.file(categoriesFile, { name: "categories.json" });
   archive.finalize();
 });
 
-// Admin restore - upload backup zip and restore JSON files
+// --- Admin restore ---
 app.post("/admin/restore", upload.single("backup"), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ message: "No file uploaded" });
 
     const zip = await unzipper.Open.buffer(req.file.buffer);
-    const articlesEntry = zip.files.find(f => f.path === "articles.json");
-    const categoriesEntry = zip.files.find(f => f.path === "categories.json");
+    const art = zip.files.find(f => f.path === "articles.json");
+    const cat = zip.files.find(f => f.path === "categories.json");
+    if (!art || !cat) return res.status(400).json({ message: "Archive missing required files" });
 
-    if (!articlesEntry || !categoriesEntry) {
-      return res.status(400).json({ message: "Missing articles.json or categories.json in archive" });
-    }
-
-    fs.writeFileSync(articlesFile, await articlesEntry.buffer());
-    fs.writeFileSync(categoriesFile, await categoriesEntry.buffer());
-
+    fs.writeFileSync(articlesFile, await art.buffer());
+    fs.writeFileSync(categoriesFile, await cat.buffer());
     res.json({ message: "Restore successful" });
-  } catch (err) {
-    console.error("Restore error:", err);
+  } catch (e) {
+    console.error("Restore error:", e);
     res.status(500).json({ message: "Internal server error" });
   }
 });
 
-// Start server
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
+// ------------------------------------------------------------------
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
