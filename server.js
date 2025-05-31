@@ -1,5 +1,5 @@
 //──────────────────────────────────────────────────────────────────────────────
-//  Komnottra backend — Express + FS storage (JSON + image uploads)
+//  Komnottra backend — Express + FS storage (JSON + image uploads)
 //  ────────────────────────────────────────────────────────────────────────────
 //  • Adds createdAt timestamp when a new article is published
 //  • Serves compressed images & tiny‑blur placeholders
@@ -7,7 +7,7 @@
 //  • CORS restricted to komnottra.com + localhost
 //──────────────────────────────────────────────────────────────────────────────
 
-// Core & third‑party deps
+// Core & third‑party deps
 const express  = require('express');
 const fs       = require('fs');
 const path     = require('path');
@@ -17,12 +17,12 @@ const multer   = require('multer');
 const unzipper = require('unzipper');
 const sharp    = require('sharp');
 
-const app = express();                      // Init Express
+const app = express();                      // Init Express
 
 //──────────────────────────────────────────────────────────────────────────────
-// 1 · Persistent‑disk folders (Render)
+// 1 · Persistent‑disk folders (Render)
 //──────────────────────────────────────────────────────────────────────────────
-const dataDir    = '/komnottra/data';       // project‑specific persistent dir
+const dataDir    = '/komnottra/data';       // project‑specific persistent dir
 const uploadsDir = path.join(dataDir, 'uploads');
 
 if (!fs.existsSync(dataDir))    fs.mkdirSync(dataDir,    { recursive: true });
@@ -30,7 +30,7 @@ if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
 
 console.log('[startup] uploads dir →', uploadsDir);
 
-// Serve uploaded images (set correct Content‑Type)
+// Serve uploaded images (set correct Content‑Type)
 app.use('/uploads', (req, _res, next) => {
   console.log('[GET] /uploads', req.originalUrl);
   next();
@@ -45,7 +45,7 @@ app.use('/uploads', express.static(uploadsDir, {
 }));
 
 //──────────────────────────────────────────────────────────────────────────────
-// 2 · Multer (image upload → /uploads)
+// 2 · Multer (image upload → /uploads)
 //──────────────────────────────────────────────────────────────────────────────
 const upload = multer({
   storage: multer.diskStorage({
@@ -58,7 +58,7 @@ const upload = multer({
 });
 
 //──────────────────────────────────────────────────────────────────────────────
-// 3 · Misc Express setup
+// 3 · Misc Express setup
 //──────────────────────────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 5000;
 const allowedOrigins = [
@@ -76,7 +76,7 @@ app.use(cors({
 app.use(express.json({ limit: '5mb' }));
 
 //──────────────────────────────────────────────────────────────────────────────
-// 4 · JSON files helpers
+// 4 · JSON files helpers
 //──────────────────────────────────────────────────────────────────────────────
 const articlesFile   = path.join(dataDir, 'articles.json');
 const categoriesFile = path.join(dataDir, 'categories.json');
@@ -86,7 +86,7 @@ const readJSON  = f => JSON.parse(fs.readFileSync(f,'utf-8')||'[]');
 const writeJSON = (f,d)=> fs.writeFileSync(f,JSON.stringify(d,null,2));
 
 //──────────────────────────────────────────────────────────────────────────────
-// 5 · Utility: slugify
+// 5 · Utility: slugify
 //──────────────────────────────────────────────────────────────────────────────
 const slugify = txt => txt.toString().toLowerCase()
   .normalize('NFKD')
@@ -96,9 +96,9 @@ const slugify = txt => txt.toString().toLowerCase()
   .replace(/^-+|-+$/g,'');
 
 //──────────────────────────────────────────────────────────────────────────────
-// 6 · ROUTES
+// 6 · ROUTES
 //──────────────────────────────────────────────────────────────────────────────
-// GET single article by slug –––––––––––––––––––––––––––––––––––––––
+// GET single article by slug
 app.get('/articles/slug/:slug', (req,res)=>{
   const art = readJSON(articlesFile);
   const slug = req.params.slug.toLowerCase().normalize('NFKD');
@@ -107,7 +107,7 @@ app.get('/articles/slug/:slug', (req,res)=>{
   res.json(article);
 });
 
-// GET all articles (optional ?category= & ?excludeId=) ––––––––––
+// GET all articles (optional ?category= & ?excludeId=)
 app.get('/articles', (req,res)=>{
   let arts = readJSON(articlesFile);
   const { category, excludeId } = req.query;
@@ -126,7 +126,7 @@ app.get('/articles', (req,res)=>{
   res.json(arts);
 });
 
-// POST create article  (adds createdAt) –––––––––––––––––––––––––––
+// POST create article (adds createdAt)
 app.post('/articles', upload.single('image'), async (req,res)=>{
   try {
     /* 1 ▸ Validate input ----------------------------------------------------*/
@@ -136,7 +136,7 @@ app.post('/articles', upload.single('image'), async (req,res)=>{
     if (!title || typeof title!=='string') {
       return res.status(400).json({message:'Title is required (string)'});
     }
-    // norm category → string|array|null
+    // norm category → string|array|null
     if (Array.isArray(category)) {
       const uniq = [...new Set(category.map(c=>c.trim()).filter(Boolean))];
       category   = uniq.length===1 ? uniq[0] : uniq;
@@ -184,7 +184,95 @@ app.post('/articles', upload.single('image'), async (req,res)=>{
   }
 });
 
-// DELETE article (also removes local image) –––––––––––––––––––––––
+// PUT update article by ID (with optional image upload)
+app.put('/articles/:id', upload.single('image'), async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ message: 'Invalid article ID' });
+
+    const articles = readJSON(articlesFile);
+    const index = articles.findIndex(a => a.id === id);
+    if (index === -1) return res.status(404).json({ message: 'Article not found' });
+
+    // Extract fields from body
+    const { title, content } = req.body;
+    let { category } = req.body;
+
+    // Validate title and content (optional)
+    if (title && typeof title !== 'string') {
+      return res.status(400).json({ message: 'Title must be a string' });
+    }
+    if (content && typeof content !== 'string') {
+      return res.status(400).json({ message: 'Content must be a string' });
+    }
+
+    // Normalize category like in POST
+    if (Array.isArray(category)) {
+      const uniq = [...new Set(category.map(c => c.trim()).filter(Boolean))];
+      category = uniq.length === 1 ? uniq[0] : uniq;
+    } else if (typeof category === 'string') {
+      category = category.trim() || null;
+    } else {
+      category = null;
+    }
+
+    // Get current article
+    const article = articles[index];
+
+    // If title changed, update slug
+    if (title && title !== article.title) {
+      const baseSlug = slugify(title);
+      let slug = baseSlug;
+      let i = 1;
+      while (articles.some(a => a.slug === slug && a.id !== id)) {
+        slug = `${baseSlug}-${i++}`;
+      }
+      article.slug = slug;
+      article.title = title;
+    } else if (title) {
+      article.title = title;
+    }
+
+    if (content) article.content = content;
+    if (category !== null) article.category = category;
+
+    // Handle image upload (compress + blur) like POST
+    if (req.file) {
+      // Delete old image if exists
+      if (article.imageUrl?.startsWith('/uploads/')) {
+        const oldPath = path.join(dataDir, article.imageUrl);
+        if (fs.existsSync(oldPath)) {
+          try { fs.unlinkSync(oldPath); } catch (e) { console.error('Failed deleting old image', e); }
+        }
+      }
+
+      const compressedName = `compressed-${req.file.filename}`;
+      const compressedPath = path.join(uploadsDir, compressedName);
+      const imgBuf = await sharp(req.file.path)
+        .resize({ width: 1200, withoutEnlargement: true })
+        .jpeg({ quality: 70 })
+        .toBuffer();
+      fs.writeFileSync(compressedPath, imgBuf);
+
+      article.imageUrl = `/uploads/${compressedName}`;
+
+      const tinyBuf = await sharp(imgBuf).resize(20).blur().toBuffer();
+      article.blurDataUrl = `data:image/jpeg;base64,${tinyBuf.toString('base64')}`;
+
+      fs.unlinkSync(req.file.path); // remove original upload
+    }
+
+    articles[index] = article;
+    writeJSON(articlesFile, articles);
+
+    res.json({ message: 'Article updated', article });
+  } catch (e) {
+    console.error('Update article error:', e);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+});
+
+// DELETE article (also removes local image)
 app.delete('/articles/:id', (req,res)=>{
   const id = Number(req.params.id);
   const arts = readJSON(articlesFile);
@@ -197,7 +285,7 @@ app.delete('/articles/:id', (req,res)=>{
   res.json({message:'Article & image deleted'});
 });
 
-// CATEGORY routes (GET/POST/DELETE) ––––––––––––––––––––––––––––––
+// CATEGORY routes (GET/POST/DELETE)
 app.get('/categories',(_q,res)=>res.json(readJSON(categoriesFile)));
 app.post('/categories',(req,res)=>{
   const { category } = req.body;
@@ -216,7 +304,7 @@ app.delete('/categories/:category',(req,res)=>{
   res.json({message:'Category deleted'});
 });
 
-// BACKUP (zip)  & RESTORE (upload zip) –––––––––––––––––––––––––––
+// BACKUP (zip) & RESTORE (upload zip)
 app.get('/admin/backup',(_q,res)=>{
   const archive = archiver('zip',{zlib:{level:9}});
   res.attachment('backup.zip');
@@ -252,18 +340,25 @@ app.post('/admin/restore',upload.single('backup'),async(req,res)=>{
   }
 });
 
-// Share (short URL with OG meta) ––––––––––––––––––––––––––––––––––
+// Share (short URL with OG meta)
 app.get('/share/:slug',(req,res)=>{
   const slug = req.params.slug.toLowerCase();
   const arts = readJSON(articlesFile);
   const art  = arts.find(a=>a.slug===slug);
   if (!art) return res.status(404).send('Article not found');
-  const image = art.imageUrl?.startsWith('http') ? art.imageUrl : `https://komnottra.com${art.imageUrl}`;
-  const safeTitle = (art.title||'').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-  res.send(`<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta property="og:title" content="${safeTitle}"><meta property="og:image" content="${image}"><meta property="og:type" content="article"><meta property="og:url" content="https://komnottra.com/share/${slug}"><meta name="twitter:card" content="summary_large_image"><meta http-equiv="refresh" content="0; url=/article.html?slug=${slug}"><title>${safeTitle}</title></head><body>Redirecting…</body></html>`);
+  const html = `
+    <!DOCTYPE html><html><head>
+    <meta charset="utf-8" />
+    <title>${art.title}</title>
+    <meta property="og:title" content="${art.title}" />
+    <meta property="og:description" content="${art.content.slice(0,100)}" />
+    <meta property="og:image" content="${art.imageUrl}" />
+    <meta http-equiv="refresh" content="0; url=/articles/slug/${slug}" />
+    </head><body>
+    Redirecting to article...
+    </body></html>`;
+  res.send(html);
 });
 
-//──────────────────────────────────────────────────────────────────────────────
-// 7 · Start server
-//──────────────────────────────────────────────────────────────────────────────
-app.listen(PORT, () => console.log(`[ready] Komnottra API on :${PORT}`));
+// Start server
+app.listen(PORT,()=>console.log(`[server] listening on port ${PORT}`));
