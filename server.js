@@ -353,7 +353,7 @@ app.get('/share/:slug',(req,res)=>{
     <meta property="og:title" content="${art.title}" />
     <meta property="og:description" content="${art.content.slice(0,100)}" />
     <meta property="og:image" content="${art.imageUrl}" />
-    <meta http-equiv="refresh" content="0; url=/articles/slug/${slug}" />
+    <meta http-equiv="refresh" content="0; url=/article.html?slug=${encodeURIComponent(slug)}" />
     </head><body>
     Redirecting to article...
     </body></html>`;
